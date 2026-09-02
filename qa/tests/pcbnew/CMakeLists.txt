@@ -64,6 +64,7 @@ set( QA_PCBNEW_SRCS
     test_history_autosave.cpp
     test_fields_table_presence.cpp
     test_footprint.cpp
+    test_footprint_placement.cpp
     test_footprint_editor_tabs.cpp
     test_footprint_import_reconciler.cpp
     test_footprint_library_adapter.cpp

@@ -33,6 +33,7 @@ set( QA_KIMATH_SRCS
     geometry/test_eda_angle.cpp
     geometry/test_ellipse_to_bezier.cpp
     geometry/test_fillet.cpp
+    geometry/test_grid_geometry.cpp
     geometry/test_half_line.cpp
     geometry/test_intersection.cpp
     geometry/test_oval.cpp

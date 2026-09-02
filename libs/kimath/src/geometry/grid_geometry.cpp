@@ -90,6 +90,32 @@ VECTOR2D GRID_GEOMETRY::Snap( const VECTOR2D& aPoint ) const
 }
 
 
+VECTOR2D GRID_GEOMETRY::SnapToCellCentre( const VECTOR2D& aPoint ) const
+{
+    if( kind != KIND::CARTESIAN )
+        return Snap( aPoint );
+
+    const double dx = pitch.x;
+    const double dy = pitch.y;
+
+    if( dx <= 0.0 || dy <= 0.0 )
+        return aPoint;
+
+    const VECTOR2D local = GetRotated( aPoint - origin, EDA_ANGLE( -orientation, RADIANS_T ) );
+
+    // Grid points run -N..+N about the origin, so the cells between them run -N..+N-1.
+    const int nX = static_cast<int>( extent.x / dx );
+    const int nY = static_cast<int>( extent.y / dy );
+
+    const int xIdx = std::clamp( static_cast<int>( std::floor( local.x / dx ) ), -nX, std::max( -nX, nX - 1 ) );
+    const int yIdx = std::clamp( static_cast<int>( std::floor( local.y / dy ) ), -nY, std::max( -nY, nY - 1 ) );
+
+    const VECTOR2D candidate( ( xIdx + 0.5 ) * dx, ( yIdx + 0.5 ) * dy );
+
+    return GetRotated( candidate, EDA_ANGLE( orientation, RADIANS_T ) ) + origin;
+}
+
+
 bool GRID_GEOMETRY::Contains( const VECTOR2D& aPoint, double aTolerance ) const
 {
     const VECTOR2D local = GetRotated( aPoint - origin, EDA_ANGLE( -orientation, RADIANS_T ) );

@@ -241,6 +241,18 @@ void GRID_HELPER::setLayoutReference( const VECTOR2I& aPoint, const std::optiona
 }
 
 
+void GRID_HELPER::setLayoutReferenceCentre( const std::optional<BOX2I>& aBounds )
+{
+    if( aBounds )
+        m_layoutReferencePreference = { SNAP_REFERENCE_KIND::BOUNDS_FEATURE, 1, 1 };
+    else
+        m_layoutReferencePreference = {};
+
+    wxLogTrace( wxT( "KICAD_SNAP_RESOLVER" ), "drag reference kind=%s (tile centre)",
+                aBounds ? "bounds" : "none" );
+}
+
+
 std::optional<VECTOR2I> GRID_HELPER::SnapToConstructionLines( const VECTOR2I& aPoint, const VECTOR2I& aNearestGrid,
                                                               const VECTOR2D& aGrid, double aSnapRange ) const
 {
@@ -547,6 +559,39 @@ VECTOR2I GRID_HELPER::Align( const VECTOR2I& aPoint, const VECTOR2D& aGrid,
         return aPoint;
 
     VECTOR2I nearest = AlignGrid( aPoint, aGrid, aOffset );
+
+    if( !m_auxAxis )
+        return nearest;
+
+    if( std::abs( m_auxAxis->x - aPoint.x ) < std::abs( nearest.x - aPoint.x ) )
+        nearest.x = m_auxAxis->x;
+
+    if( std::abs( m_auxAxis->y - aPoint.y ) < std::abs( nearest.y - aPoint.y ) )
+        nearest.y = m_auxAxis->y;
+
+    return nearest;
+}
+
+
+VECTOR2I GRID_HELPER::AlignGridTile( const VECTOR2I& aPoint, const VECTOR2D& aGrid,
+                                     const VECTOR2D& aOffset ) const
+{
+    // Cell centres are grid points shifted by half a pitch; round the grid first for the same
+    // reason AlignGrid does.
+    const VECTOR2I grid = KiROUND( aGrid );
+    const VECTOR2I offset = KiROUND( aOffset + aGrid / 2.0 );
+
+    return computeNearest( aPoint, grid, offset );
+}
+
+
+VECTOR2I GRID_HELPER::AlignTile( const VECTOR2I& aPoint, const VECTOR2D& aGrid,
+                                 const VECTOR2D& aOffset ) const
+{
+    if( !canUseGrid() )
+        return aPoint;
+
+    VECTOR2I nearest = AlignGridTile( aPoint, aGrid, aOffset );
 
     if( !m_auxAxis )
         return nearest;

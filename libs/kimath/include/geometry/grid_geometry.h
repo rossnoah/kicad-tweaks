@@ -52,6 +52,17 @@ struct GRID_GEOMETRY
     VECTOR2D Snap( const VECTOR2D& aPoint ) const;
 
     /**
+     * Snap a point to the centre of the grid cell (tile) that contains it.
+     *
+     * A cartesian grid's cells are the squares between grid points, so the result is a grid
+     * point offset by half a pitch on each axis.  A polar grid has no meaningful cell centre,
+     * so it falls back to Snap().
+     *
+     * @return aPoint unchanged for degenerate geometry (non-positive pitch).
+     */
+    VECTOR2D SnapToCellCentre( const VECTOR2D& aPoint ) const;
+
+    /**
      * @return true if aPoint is within aTolerance of the grid's coverage.
      */
     bool Contains( const VECTOR2D& aPoint, double aTolerance = 0.0 ) const;

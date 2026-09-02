@@ -88,7 +88,17 @@ public:
         m_retainedAngleBranch.reset();
         m_stickySnapIds.clear();
         m_layoutReferencePreference = {};
+        m_tileSnap = false;
     }
+
+    /**
+     * Snap to the centres of grid cells (tiles) instead of to grid points.
+     *
+     * Used while a footprint is being placed: its centre lands in the middle of the tile under
+     * the cursor, so the footprint's origin and the part's pitch family stop mattering.
+     */
+    void SetTileSnap( bool aEnable ) { m_tileSnap = aEnable; }
+    bool GetTileSnap() const { return m_tileSnap; }
 
     // Manual setters used when no TOOL_MANAGER/View is available (e.g. in tests)
     void SetGridSize( const VECTOR2D& aGrid ) { m_manualGrid = aGrid; }
@@ -115,6 +125,24 @@ public:
     VECTOR2I AlignGrid( const VECTOR2I& aPoint ) const;
     VECTOR2I AlignGrid( const VECTOR2I& aPoint, const VECTOR2D& aGrid,
                         const VECTOR2D& aOffset ) const;
+
+    /**
+     * Align to the centre of the grid cell containing aPoint (see SetTileSnap).
+     *
+     * Behaves like Align(): returns aPoint unchanged when the grid cannot be used, and lets the
+     * auxiliary axes win when they are closer.
+     */
+    virtual VECTOR2I AlignTile( const VECTOR2I& aPoint, GRID_HELPER_GRIDS aGrid ) const
+    {
+        return AlignTile( aPoint, GetGridSize( aGrid ), GetOrigin() );
+    }
+
+    virtual VECTOR2I AlignTile( const VECTOR2I& aPoint, const VECTOR2D& aGrid,
+                                const VECTOR2D& aOffset ) const;
+
+    /// The cell-centre counterpart of AlignGrid(): pure arithmetic, no snapping gates.
+    VECTOR2I AlignGridTile( const VECTOR2I& aPoint, const VECTOR2D& aGrid,
+                            const VECTOR2D& aOffset ) const;
 
     /**
      * Gets the coarsest grid that applies to a selecion of items.
@@ -367,6 +395,7 @@ protected:
     std::vector<SEG>                    m_stationarySelfSegments;
     bool                                m_pointEditProfile = false;
     SNAP_REFERENCE_PREFERENCE           m_layoutReferencePreference;
+    bool                                m_tileSnap = false;
 
     /**
      * Classify the point a drag was started from against the moving object's bounds.
@@ -385,6 +414,15 @@ protected:
 
     /// Record the classified drag reference and trace it.
     void setLayoutReference( const VECTOR2I& aPoint, const std::optional<BOX2I>& aBounds, bool aAnchorPoint );
+
+    /**
+     * Record a drag reference that is, by construction, the centre of the moving bounds.
+     *
+     * Tile snapping drags a footprint by its placement centre, which need not be the centre of
+     * the layout bounds (a courtyard can be offset from the pads), so the reference is stated
+     * directly rather than classified from a point.
+     */
+    void setLayoutReferenceCentre( const std::optional<BOX2I>& aBounds );
 
 private:
     /// Show construction geometry (if any) on the canvas.

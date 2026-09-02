@@ -28,6 +28,7 @@
 
 #include <advanced_config.h>
 #include <board_item.h>
+#include <eda_units.h>
 #include <pcb_dimension.h>
 #include <pcb_shape.h>
 #include <footprint.h>
@@ -106,6 +107,13 @@ VECTOR2I SnapToGridItem( const PCB_GRIDITEM* aItem, const VECTOR2I& aWorld )
     return VECTOR2I( KiROUND( snapped.x ), KiROUND( snapped.y ) );
 }
 
+
+VECTOR2I SnapToGridItemCell( const PCB_GRIDITEM* aItem, const VECTOR2I& aWorld )
+{
+    const VECTOR2D snapped = aItem->AsGridGeometry().SnapToCellCentre( VECTOR2D( aWorld ) );
+    return VECTOR2I( KiROUND( snapped.x ), KiROUND( snapped.y ) );
+}
+
 } // namespace
 
 PCB_GRID_HELPER::PCB_GRID_HELPER() :
@@ -142,6 +150,9 @@ PCB_GRID_HELPER::PCB_GRID_HELPER( TOOL_MANAGER* aToolMgr, MAGNETIC_SETTINGS* aMa
     getSnapManager().SetSnapGuideColors( anchorColor, anchorColor.Brightened( 0.2 ) );
     view->SetVisible( &m_viewSnapPoint, false );
 
+    view->Add( &m_readout );
+    view->SetVisible( &m_readout, false );
+
     if( m_toolMgr->GetModel() )
         static_cast<BOARD*>( aToolMgr->GetModel() )->AddListener( this );
 }
@@ -156,6 +167,7 @@ PCB_GRID_HELPER::~PCB_GRID_HELPER()
 
     view->Remove( &m_viewAxis );
     view->Remove( &m_viewSnapPoint );
+    view->Remove( &m_readout );
 
     if( m_toolMgr->GetModel() )
         static_cast<BOARD*>( m_toolMgr->GetModel() )->RemoveListener( this );
@@ -375,6 +387,182 @@ VECTOR2I PCB_GRID_HELPER::Align( const VECTOR2I& aPoint, GRID_HELPER_GRIDS aGrid
     }
 
     return best;
+}
+
+
+VECTOR2I PCB_GRID_HELPER::AlignTile( const VECTOR2I& aPoint, GRID_HELPER_GRIDS aGrid ) const
+{
+    if( !canUseGrid() )
+        return GRID_HELPER::AlignTile( aPoint, aGrid );
+
+    BOARD* board = static_cast<BOARD*>( m_toolMgr->GetModel() );
+
+    if( !board || !board->IsElementVisible( LAYER_GRIDITEMS ) )
+        return GRID_HELPER::AlignTile( aPoint, aGrid );
+
+    // A PLACEMENT grid covering the point owns it outright, like a CURSOR grid does in Align().
+    if( PCB_GRIDITEM* active = FindActiveGridAt( *board, aPoint, PCB_GRIDITEM_ROLE::PLACEMENT ) )
+        return SnapToGridItemCell( active, aPoint );
+
+    const VECTOR2I gridAligned = GRID_HELPER::AlignTile( aPoint, aGrid );
+
+    const int   snapSize = 25;
+    double      snapScreen = m_toolMgr->GetView()->ToWorld( snapSize );
+    int         snapRange = KiROUND( std::min( snapScreen, GetVisibleGrid().x ) );
+    SEG::ecoord bestDist = SEG::Square( snapRange );
+    VECTOR2I    best = gridAligned;
+
+    for( BOARD_ITEM* item : board->Drawings() )
+    {
+        if( item->Type() != PCB_GRIDITEM_T )
+            continue;
+
+        PCB_GRIDITEM* grid = static_cast<PCB_GRIDITEM*>( item );
+
+        if( !grid->Affects().placement || grid->IsSelected() )
+            continue;
+
+        BOX2I bbox = grid->GetBoundingBox();
+        bbox.Inflate( snapRange );
+
+        if( !bbox.Contains( aPoint ) )
+            continue;
+
+        const VECTOR2I    candidate = SnapToGridItemCell( grid, aPoint );
+        const SEG::ecoord dist = ( candidate - aPoint ).SquaredEuclideanNorm();
+
+        if( dist < bestDist )
+        {
+            bestDist = dist;
+            best = candidate;
+        }
+    }
+
+    return best;
+}
+
+
+bool PCB_GRID_HELPER::TileSnapPreferred() const
+{
+    if( !m_toolMgr || editingInsideFootprint() )
+        return false;
+
+    if( PCB_BASE_FRAME* frame = dynamic_cast<PCB_BASE_FRAME*>( m_toolMgr->GetToolHolder() ) )
+    {
+        if( PCBNEW_SETTINGS* cfg = frame->GetPcbNewSettings() )
+            return cfg->m_FootprintTileSnap;
+
+        return false;
+    }
+
+    // Headless callers have settings but no PCB frame.
+    if( PCBNEW_SETTINGS* cfg = dynamic_cast<PCBNEW_SETTINGS*>( m_toolMgr->GetSettings() ) )
+        return cfg->m_FootprintTileSnap;
+
+    return false;
+}
+
+
+bool PCB_GRID_HELPER::IsFootprintOnlySelection( const std::vector<BOARD_ITEM*>& aItems )
+{
+    bool haveFootprint = false;
+
+    for( const BOARD_ITEM* item : aItems )
+    {
+        if( !item )
+            continue;
+
+        if( item->Type() == PCB_FOOTPRINT_T )
+        {
+            haveFootprint = true;
+            continue;
+        }
+
+        if( item->Type() != PCB_PAD_T )
+            return false;
+
+        const BOARD_ITEM* parent = item->GetParent();
+
+        if( !parent || std::find( aItems.begin(), aItems.end(), parent ) == aItems.end() )
+            return false;
+    }
+
+    return haveFootprint;
+}
+
+
+FOOTPRINT* PCB_GRID_HELPER::LeadFootprint( const VECTOR2I& aMousePos, const std::vector<BOARD_ITEM*>& aItems )
+{
+    FOOTPRINT*  containing = nullptr;
+    double      containingArea = std::numeric_limits<double>::max();
+    FOOTPRINT*  nearest = nullptr;
+    SEG::ecoord nearestDist = std::numeric_limits<SEG::ecoord>::max();
+
+    for( BOARD_ITEM* item : aItems )
+    {
+        if( !item || item->Type() != PCB_FOOTPRINT_T )
+            continue;
+
+        FOOTPRINT*  footprint = static_cast<FOOTPRINT*>( item );
+        const BOX2I bounds = layoutBounds( *footprint );
+
+        if( bounds.Contains( aMousePos ) )
+        {
+            const double area = bounds.GetArea();
+
+            if( area < containingArea )
+            {
+                containingArea = area;
+                containing = footprint;
+            }
+        }
+
+        const SEG::ecoord dist = ( footprint->GetPlacementCentre() - aMousePos ).SquaredEuclideanNorm();
+
+        if( dist < nearestDist )
+        {
+            nearestDist = dist;
+            nearest = footprint;
+        }
+    }
+
+    return containing ? containing : nearest;
+}
+
+
+VECTOR2I PCB_GRID_HELPER::TileDragOrigin( const VECTOR2I& aMousePos, const std::vector<BOARD_ITEM*>& aItems )
+{
+    // No item anchors: the centre is the reference and nothing may outrank it.
+    clearAnchors();
+
+    FOOTPRINT* lead = LeadFootprint( aMousePos, aItems );
+
+    if( !lead )
+    {
+        setLayoutReferenceCentre( std::nullopt );
+        return aMousePos;
+    }
+
+    std::optional<BOX2I> movingBounds;
+
+    for( BOARD_ITEM* item : aItems )
+    {
+        if( !item )
+            continue;
+
+        if( movingBounds )
+            movingBounds->Merge( layoutBounds( *item ) );
+        else
+            movingBounds = layoutBounds( *item );
+    }
+
+    setLayoutReferenceCentre( movingBounds );
+
+    const VECTOR2I centre = lead->GetPlacementCentre();
+
+    wxLogTrace( traceSnap, "TileDragOrigin: lead %s, centre (%d, %d)", lead->GetReference(), centre.x, centre.y );
+
+    return centre;
 }
 
 
@@ -743,7 +931,7 @@ SNAP_RESULT PCB_GRID_HELPER::ResolveSnap( const VECTOR2I& aOrigin, const LSET& a
     computeAnchors( visibleItems, aOrigin, false, nullptr, &aLayers, false );
 
     ANCHOR*        nearest = nearestAnchor( aOrigin, SNAPPABLE );
-    VECTOR2I       nearestGrid = Align( aOrigin, aGrid );
+    VECTOR2I       nearestGrid = m_tileSnap ? AlignTile( aOrigin, aGrid ) : Align( aOrigin, aGrid );
     const VECTOR2D gridSize = GetGridSize( aGrid );
 
     SNAP_SOURCE_CONTEXT context;
@@ -1282,6 +1470,7 @@ SNAP_RESULT PCB_GRID_HELPER::ResolveSnap( const VECTOR2I& aOrigin, const LSET& a
     }
 
     applySnapResultGuides( result );
+    updateReadout( result, aGrid, wxEmptyString );
 
     static const bool canActivateByHitTest = ADVANCED_CFG::GetCfg().m_ExtensionSnapActivateOnHover;
 
@@ -1326,6 +1515,98 @@ void PCB_GRID_HELPER::ClearSnapFeedback()
     SNAP_LINE_MANAGER& manager = getSnapManager().GetSnapLineManager();
     manager.ClearSnapLine();
     m_toolMgr->GetView()->SetVisible( &m_viewSnapPoint, false );
+
+    m_readoutState = {};
+    m_readout.Hide();
+    m_toolMgr->GetView()->SetVisible( &m_readout, false );
+}
+
+
+wxString PCB_GRID_HELPER::GetGridDescription( GRID_HELPER_GRIDS aGrid ) const
+{
+    if( !m_toolMgr )
+        return wxEmptyString;
+
+    const GRID_SETTINGS& grid = m_toolMgr->GetSettings()->m_Window.grid;
+    int                  idx = grid.last_size_idx;
+
+    if( grid.overrides_enabled )
+    {
+        switch( aGrid )
+        {
+        case GRID_CONNECTABLE: if( grid.override_connected ) idx = grid.override_connected_idx; break;
+        case GRID_WIRES:       if( grid.override_wires )     idx = grid.override_wires_idx;     break;
+        case GRID_VIAS:        if( grid.override_vias )      idx = grid.override_vias_idx;      break;
+        case GRID_TEXT:        if( grid.override_text )      idx = grid.override_text_idx;      break;
+        case GRID_GRAPHICS:    if( grid.override_graphics )  idx = grid.override_graphics_idx;  break;
+        default:                                                                                break;
+        }
+    }
+
+    if( idx >= 0 && idx < (int) grid.grids.size() )
+    {
+        if( PCB_BASE_FRAME* frame = dynamic_cast<PCB_BASE_FRAME*>( m_toolMgr->GetToolHolder() ) )
+            return grid.grids[idx].UserUnitsMessageText( frame );
+
+        return grid.grids[idx].MessageText( pcbIUScale, EDA_UNITS::MM );
+    }
+
+    const VECTOR2D size = GetGridSize( aGrid );
+
+    return EDA_UNIT_UTILS::UI::MessageTextFromValue( pcbIUScale, EDA_UNITS::MM, size.x );
+}
+
+
+void PCB_GRID_HELPER::updateReadout( const SNAP_RESULT& aResult, GRID_HELPER_GRIDS aGrid,
+                                     const wxString& aLatticeLabel )
+{
+    KIGFX::VIEW* view = m_toolMgr->GetView();
+
+    if( !m_tileSnap )
+    {
+        m_readoutState = {};
+        m_readout.Hide();
+        view->SetVisible( &m_readout, false );
+        return;
+    }
+
+    bool onGrid = false;
+    bool onLattice = false;
+
+    for( const SNAP_STABLE_ID& id : aResult.accepted )
+    {
+        if( id.kind == SNAP_ID_KIND::GRID_X || id.kind == SNAP_ID_KIND::GRID_Y )
+            onGrid = true;
+        else if( id.kind == SNAP_ID_KIND::LATTICE_X || id.kind == SNAP_ID_KIND::LATTICE_Y )
+            onLattice = true;
+    }
+
+    wxArrayString lines;
+
+    if( onLattice )
+    {
+        m_readoutState = { SNAP_READOUT_STATE::KIND::LATTICE, aLatticeLabel };
+        lines.Add( wxString::Format( _( "in step with %s" ), aLatticeLabel ) );
+    }
+    else if( onGrid )
+    {
+        m_readoutState = { SNAP_READOUT_STATE::KIND::TILE, GetGridDescription( aGrid ) };
+        lines.Add( wxString::Format( _( "centre on %s tile" ), m_readoutState.detail ) );
+    }
+    else if( !aResult.accepted.empty() )
+    {
+        m_readoutState = { SNAP_READOUT_STATE::KIND::OBJECT, wxEmptyString };
+        lines.Add( _( "on object" ) );
+    }
+    else
+    {
+        m_readoutState = { SNAP_READOUT_STATE::KIND::FREE, wxEmptyString };
+        lines.Add( _( "free" ) );
+    }
+
+    m_readout.Set( aResult.position, lines );
+    view->SetVisible( &m_readout, true );
+    view->Update( &m_readout, KIGFX::GEOMETRY );
 }
 
 

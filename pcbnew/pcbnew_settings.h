@@ -239,6 +239,9 @@ public:
 
     MAGNETIC_SETTINGS  m_MagneticItems;
     SNAP_INFERENCE_SETTINGS m_SnapInference;
+
+    /// Snap a moving footprint's centre to grid cell centres instead of its origin to grid points.
+    bool               m_FootprintTileSnap;
     TRACK_DRAG_ACTION  m_TrackDragAction;
     ARC_EDIT_MODE      m_ArcEditMode;
 

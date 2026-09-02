@@ -1016,6 +1016,17 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
     PCB_GRID_HELPER grid( m_toolMgr, editFrame->GetMagneticItemsSettings() );
     std::shared_ptr<BOARD_CONSTRAINT_MOVE_SESSION> constraintMoveSession;
 
+    // Tile snapping: a footprint-only selection is dragged by its placement centre, which lands
+    // on grid cell centres.  tileLead is the footprint whose centre is the reference, and
+    // tileCursorOffset is where that centre sits relative to the cursor (zero when the cursor
+    // is warped onto it, or when tile snapping is off).
+    const bool tileMode = !moveWithReference && grid.TileSnapPreferred()
+                          && PCB_GRID_HELPER::IsFootprintOnlySelection( sel_items );
+    FOOTPRINT* tileLead = nullptr;
+    VECTOR2I   tileCursorOffset;
+
+    grid.SetTileSnap( tileMode );
+
     // Scans every footprint, and cannot change for the duration of the move
     const bool boardHasConstraints = BoardHasConstraints( board );
 
@@ -1087,8 +1098,15 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
                 if( !frameRotate )
                     return;
 
-                // m_cursor is the pick-up point dragged along with the selection.
-                VECTOR2I  pivot = frameFp ? frameFp->GetPosition() : m_cursor;
+                // m_cursor is the pick-up point dragged along with the selection.  Under tile
+                // snapping the selection is carried by the footprint's placement centre instead.
+                VECTOR2I pivot;
+
+                if( frameFp )
+                    pivot = grid.GetTileSnap() ? frameFp->GetPlacementCentre() : frameFp->GetPosition();
+                else
+                    pivot = m_cursor + tileCursorOffset;
+
                 EDA_ANGLE newAngle = GridFrameAngleAt( *board, pivot, PCB_GRIDITEM_ROLE::PLACEMENT );
                 EDA_ANGLE delta = GridFrameRotationDelta( prevFrameAngle, newAngle, editFrame->GetRotationAngle() );
 
@@ -1288,7 +1306,14 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
                 {
                     VECTOR2I mousePos( controls->GetMousePosition() );
 
-                    m_cursor = grid.ResolveSnap( mousePos, layers, selectionGrid, sel_items, prevPos ).position;
+                    // Re-derive the centre each frame: a rotate or flip mid-drag moves it, and the
+                    // tile must follow the centre the footprint actually has now.
+                    if( tileLead )
+                        tileCursorOffset = tileLead->GetPlacementCentre() - prevPos;
+
+                    m_cursor = grid.ResolveSnap( mousePos + tileCursorOffset, layers, selectionGrid, sel_items,
+                                                 prevPos + tileCursorOffset ).position
+                               - tileCursorOffset;
                 }
 
                 if( axisLock == AXIS_LOCK::HORIZONTAL )
@@ -1513,8 +1538,17 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
 
                     // Use the mouse position over cursor, as otherwise large grids will allow only
                     // snapping to items that are closest to grid points
-                    m_cursor = grid.BestDragOrigin( originalMousePos, sel_items, grid.GetSelectionGrid( selection ),
-                                                    &m_selectionTool->GetFilter() );
+                    if( grid.GetTileSnap() )
+                    {
+                        tileLead = PCB_GRID_HELPER::LeadFootprint( originalMousePos, sel_items );
+                        m_cursor = grid.TileDragOrigin( originalMousePos, sel_items );
+                    }
+                    else
+                    {
+                        m_cursor = grid.BestDragOrigin( originalMousePos, sel_items,
+                                                        grid.GetSelectionGrid( selection ),
+                                                        &m_selectionTool->GetFilter() );
+                    }
 
                     // Set the current cursor position to the first dragged item origin, so the
                     // movement vector could be computed later
@@ -1540,9 +1574,18 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
                         grid.SetAuxAxes( true, dragOrigin );
 
                         if( !editFrame->GetMoveWarpsCursor() )
+                        {
                             m_cursor = originalCursorPos;
+
+                            // The centre keeps its distance from the cursor; snapping is applied
+                            // to the centre, not to the cursor.
+                            if( tileLead )
+                                tileCursorOffset = dragOrigin - originalCursorPos;
+                        }
                         else
+                        {
                             m_cursor = dragOrigin;
+                        }
                     }
 
                     originalPos = selection.GetReferencePoint();
@@ -1652,9 +1695,19 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
                                                            PCB_GRIDITEM_ROLE::PLACEMENT );
                     }
 
+                    // Tile snapping follows the new item: a footprint is carried by its centre.
+                    tileLead = nullptr;
+                    tileCursorOffset = VECTOR2I( 0, 0 );
+                    grid.SetTileSnap( tileMode && nextItem->Type() == PCB_FOOTPRINT_T );
+
+                    if( grid.GetTileSnap() )
+                        tileLead = static_cast<FOOTPRINT*>( nextItem );
+
                     // Pick up new item
                     aCommit->Modify( nextItem, nullptr, RECURSE_MODE::RECURSE );
-                    nextItem->Move( controls->GetCursorPosition( true ) - nextItem->GetPosition() );
+
+                    VECTOR2I pickPoint = tileLead ? tileLead->GetPlacementCentre() : nextItem->GetPosition();
+                    nextItem->Move( controls->GetCursorPosition( true ) - pickPoint );
 
                     // Images are on non-cached layers and will not be updated automatically in the overlay, so
                     // explicitly tell the view they've moved.

@@ -86,6 +86,43 @@ BOOST_AUTO_TEST_CASE( DefaultConstructor )
 }
 
 
+BOOST_FIXTURE_TEST_CASE( AlignGridTileLandsOnCellCentres, PCBGridHelperTestFixture )
+{
+    const VECTOR2D grid( 100, 100 );
+
+    BOOST_CHECK_EQUAL( helper.AlignGridTile( { 120, 30 }, grid, { 0, 0 } ), VECTOR2I( 150, 50 ) );
+    BOOST_CHECK_EQUAL( helper.AlignGridTile( { -20, -70 }, grid, { 0, 0 } ), VECTOR2I( -50, -50 ) );
+
+    // Exactly on a cell centre stays put; exactly on a grid point goes to the nearest centre.
+    BOOST_CHECK_EQUAL( helper.AlignGridTile( { 150, 50 }, grid, { 0, 0 } ), VECTOR2I( 150, 50 ) );
+    BOOST_CHECK_EQUAL( helper.AlignGridTile( { 149, 51 }, grid, { 0, 0 } ), VECTOR2I( 150, 50 ) );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( AlignGridTileHonoursOrigin, PCBGridHelperTestFixture )
+{
+    const VECTOR2D grid( 100, 100 );
+
+    BOOST_CHECK_EQUAL( helper.AlignGridTile( { 120, 30 }, grid, { 10, 10 } ), VECTOR2I( 160, 60 ) );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( AlignTileReturnsInputWhenGridSnappingOff, PCBGridHelperTestFixture )
+{
+    const VECTOR2D grid( 100, 100 );
+    const VECTOR2I point( 120, 30 );
+
+    BOOST_CHECK_EQUAL( helper.AlignTile( point, grid, { 0, 0 } ), VECTOR2I( 150, 50 ) );
+
+    helper.SetGridSnapping( false );
+    BOOST_CHECK_EQUAL( helper.AlignTile( point, grid, { 0, 0 } ), point );
+
+    helper.SetGridSnapping( true );
+    helper.SetUseGrid( false );
+    BOOST_CHECK_EQUAL( helper.AlignTile( point, grid, { 0, 0 } ), point );
+}
+
+
 BOOST_AUTO_TEST_CASE( FootprintLayoutBoundsExcludeText )
 {
     FOOTPRINT footprint( nullptr );

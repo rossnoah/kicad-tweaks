@@ -81,6 +81,7 @@ PCBNEW_SETTINGS::PCBNEW_SETTINGS() :
     m_MagneticItems.tracks    = MAGNETIC_OPTIONS::CAPTURE_CURSOR_IN_TRACK_TOOL;
     m_MagneticItems.graphics  = false;
     m_MagneticItems.allLayers = false;
+    m_FootprintTileSnap       = true;
 
     m_params.emplace_back( new PARAM<bool>( "aui.show_layer_manager",
             &m_AuiPanels.show_layer_manager, true ) );
@@ -181,6 +182,9 @@ PCBNEW_SETTINGS::PCBNEW_SETTINGS() :
             &m_MagneticItems.allLayers, false ) );
 
     AddSnapInferenceParams( m_params, m_SnapInference );
+
+    m_params.emplace_back( new PARAM<bool>( "editing.footprint_tile_snap",
+            &m_FootprintTileSnap, true ) );
 
     m_params.emplace_back( new PARAM<bool>( "editing.polar_coords",
             &m_PolarCoords, false ) );

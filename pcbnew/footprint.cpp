@@ -2310,6 +2310,35 @@ const BOX2I FOOTPRINT::GetBoundingBox( bool aIncludeText ) const
 }
 
 
+VECTOR2I FOOTPRINT::GetPlacementCentre() const
+{
+    // A courtyard on the side the footprint lives on, then the other side (a footprint drawn
+    // for one side only but flipped still has a usable outline).
+    const PCB_LAYER_ID sides[2] = { IsFlipped() ? B_CrtYd : F_CrtYd, IsFlipped() ? F_CrtYd : B_CrtYd };
+
+    for( PCB_LAYER_ID side : sides )
+    {
+        const SHAPE_POLY_SET& courtyard = GetCourtyard( side );
+        const EDA_ITEM_FLAGS  malformed = IsBackLayer( side ) ? MALFORMED_B_COURTYARD : MALFORMED_F_COURTYARD;
+
+        if( courtyard.OutlineCount() > 0 && !( GetFlags() & malformed ) )
+            return courtyard.BBox().Centre();
+    }
+
+    if( !m_pads.empty() )
+    {
+        BOX2I padBounds;
+
+        for( const PAD* pad : m_pads )
+            padBounds.Merge( pad->GetBoundingBox() );
+
+        return padBounds.Centre();
+    }
+
+    return GetBoundingBox( false ).Centre();
+}
+
+
 const BOX2I FOOTPRINT::GetLayerBoundingBox( const LSET& aLayers ) const
 {
     std::vector<PCB_TEXT*> texts;

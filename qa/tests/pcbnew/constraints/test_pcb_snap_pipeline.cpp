@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <thread>
 
 #include <qa_utils/wx_utils/unit_test_utils.h>
@@ -177,6 +178,57 @@ struct PCB_SNAP_FIXTURE
         board.Add( footprint );
         view.Add( footprint );
         return pads;
+    }
+
+    /**
+     * A footprint with its origin at aOrigin, circle pads at aOrigin + each offset, and an
+     * optional courtyard rectangle given relative to aOrigin.
+     */
+    FOOTPRINT* AddFootprint( const VECTOR2I& aOrigin, const std::vector<VECTOR2I>& aPadOffsets,
+                             std::optional<BOX2I> aCourtyard = std::nullopt, const wxString& aReference = wxS( "U1" ) )
+    {
+        FOOTPRINT* footprint = new FOOTPRINT( &board );
+        footprint->SetPosition( aOrigin );
+        footprint->SetLayer( F_Cu );
+        footprint->SetReference( aReference );
+
+        for( const VECTOR2I& offset : aPadOffsets )
+        {
+            PAD* pad = new PAD( footprint );
+            pad->SetPosition( aOrigin + offset );
+            pad->SetShape( F_Cu, PAD_SHAPE::CIRCLE );
+            pad->SetSize( F_Cu, { MM, MM } );
+            pad->SetLayerSet( LSET( { F_Cu } ) );
+            footprint->Add( pad );
+        }
+
+        if( aCourtyard )
+        {
+            const BOX2I rect( aOrigin + aCourtyard->GetOrigin(), aCourtyard->GetSize() );
+            PCB_SHAPE*  outline = new PCB_SHAPE( footprint, SHAPE_T::POLY );
+            outline->SetLayer( F_CrtYd );
+            outline->SetPolyPoints( { rect.GetOrigin(),
+                                      { rect.GetRight(), rect.GetTop() },
+                                      rect.GetEnd(),
+                                      { rect.GetLeft(), rect.GetBottom() } } );
+            outline->SetWidth( pcbIUScale.mmToIU( 0.05 ) );
+            footprint->Add( outline );
+        }
+
+        board.Add( footprint );
+        view.Add( footprint );
+        return footprint;
+    }
+
+    /// The items the move tool hands to ResolveSnap for a footprint: the footprint plus its pads.
+    static std::vector<BOARD_ITEM*> MovingItems( FOOTPRINT* aFootprint )
+    {
+        std::vector<BOARD_ITEM*> items{ aFootprint };
+
+        for( PAD* pad : aFootprint->Pads() )
+            items.push_back( pad );
+
+        return items;
     }
 };
 } // namespace
@@ -670,6 +722,107 @@ BOOST_FIXTURE_TEST_CASE( RectangleInteriorDoesNotCaptureCursor, PCB_SNAP_FIXTURE
     SNAP_RESULT result = helper->ResolveSnap( cursor, LSET( { F_SilkS } ) );
 
     BOOST_CHECK_EQUAL( result.position, cursor );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( TileSnapPlacesFootprintCentreOnTile, PCB_SNAP_FIXTURE )
+{
+    // Origin at a grid point, courtyard centred on the origin, so the placement centre is
+    // (5, 5) mm and would sit on a grid POINT under the old behaviour.
+    FOOTPRINT* fp = AddFootprint( { 5 * MM, 5 * MM }, { { -MM, 0 }, { MM, 0 } },
+                                  BOX2I( { -3 * MM / 2, -MM }, { 3 * MM, 2 * MM } ) );
+    const VECTOR2I centre = fp->GetPlacementCentre();
+    BOOST_REQUIRE_EQUAL( centre, VECTOR2I( 5 * MM, 5 * MM ) );
+
+    helper->SetTileSnap( true );
+
+    const VECTOR2I cursor = centre + VECTOR2I( 3 * MM / 10, 2 * MM / 10 );
+    SNAP_RESULT    result = helper->ResolveSnap( cursor, LSET( { F_Cu } ), GRID_CONNECTABLE, MovingItems( fp ), centre );
+
+    BOOST_CHECK_EQUAL( result.position, VECTOR2I( 5 * MM + MM / 2, 5 * MM + MM / 2 ) );
+    BOOST_CHECK( result.Accepted( { SNAP_ID_KIND::GRID_X } ) );
+    BOOST_CHECK( result.Accepted( { SNAP_ID_KIND::GRID_Y } ) );
+    BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::TILE );
+    BOOST_CHECK( !helper->GetLastReadout().detail.IsEmpty() );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( TileSnapOffKeepsGridPoints, PCB_SNAP_FIXTURE )
+{
+    FOOTPRINT* fp = AddFootprint( { 5 * MM, 5 * MM }, { { -MM, 0 }, { MM, 0 } },
+                                  BOX2I( { -3 * MM / 2, -MM }, { 3 * MM, 2 * MM } ) );
+    const VECTOR2I centre = fp->GetPlacementCentre();
+
+    const VECTOR2I cursor = centre + VECTOR2I( 3 * MM / 10, 2 * MM / 10 );
+    SNAP_RESULT    result = helper->ResolveSnap( cursor, LSET( { F_Cu } ), GRID_CONNECTABLE, MovingItems( fp ), centre );
+
+    BOOST_CHECK_EQUAL( result.position, VECTOR2I( 5 * MM, 5 * MM ) );
+    BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::NONE );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( TileSnapWithGridOffIsFree, PCB_SNAP_FIXTURE )
+{
+    FOOTPRINT* fp = AddFootprint( { 5 * MM, 5 * MM }, { { -MM, 0 }, { MM, 0 } } );
+    const VECTOR2I centre = fp->GetPlacementCentre();
+
+    helper->SetTileSnap( true );
+    helper->SetUseGrid( false );
+
+    const VECTOR2I cursor = centre + VECTOR2I( 3 * MM / 10, 2 * MM / 10 );
+    SNAP_RESULT    result = helper->ResolveSnap( cursor, LSET( { F_Cu } ), GRID_CONNECTABLE, MovingItems( fp ), centre );
+
+    BOOST_CHECK_EQUAL( result.position, cursor );
+    BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::FREE );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( TileSnapPreferredFollowsSetting, PCB_SNAP_FIXTURE )
+{
+    settings.m_FootprintTileSnap = true;
+    BOOST_CHECK( helper->TileSnapPreferred() );
+
+    settings.m_FootprintTileSnap = false;
+    BOOST_CHECK( !helper->TileSnapPreferred() );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( FootprintOnlySelectionRule, PCB_SNAP_FIXTURE )
+{
+    FOOTPRINT* fp = AddFootprint( { 5 * MM, 5 * MM }, { { -MM, 0 }, { MM, 0 } } );
+    FOOTPRINT* other = AddFootprint( { 15 * MM, 5 * MM }, { { 0, 0 } }, std::nullopt, wxS( "U2" ) );
+    PCB_TRACK* track = AddTrack( { 0, 0 }, { MM, 0 } );
+
+    std::vector<BOARD_ITEM*> footprintAndPads = MovingItems( fp );
+    BOOST_CHECK( PCB_GRID_HELPER::IsFootprintOnlySelection( footprintAndPads ) );
+
+    std::vector<BOARD_ITEM*> twoFootprints = MovingItems( fp );
+    twoFootprints.push_back( other );
+    BOOST_CHECK( PCB_GRID_HELPER::IsFootprintOnlySelection( twoFootprints ) );
+
+    std::vector<BOARD_ITEM*> withTrack = MovingItems( fp );
+    withTrack.push_back( track );
+    BOOST_CHECK( !PCB_GRID_HELPER::IsFootprintOnlySelection( withTrack ) );
+
+    std::vector<BOARD_ITEM*> strayPad{ fp, other->Pads().front() };
+    BOOST_CHECK( !PCB_GRID_HELPER::IsFootprintOnlySelection( strayPad ) );
+
+    BOOST_CHECK( !PCB_GRID_HELPER::IsFootprintOnlySelection( {} ) );
+    BOOST_CHECK( !PCB_GRID_HELPER::IsFootprintOnlySelection( { track } ) );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( TileDragOriginIsLeadFootprintCentre, PCB_SNAP_FIXTURE )
+{
+    FOOTPRINT* fp = AddFootprint( { 5 * MM, 5 * MM }, { { 0, 0 }, { 2 * MM, 0 } } );
+    const VECTOR2I centre = fp->GetPlacementCentre();
+    BOOST_REQUIRE_EQUAL( centre, VECTOR2I( 6 * MM, 5 * MM ) );
+
+    std::vector<BOARD_ITEM*> items = MovingItems( fp );
+
+    // Grabbed on the origin pad, far from the centre: the centre is still the reference.
+    BOOST_CHECK_EQUAL( helper->TileDragOrigin( { 5 * MM, 5 * MM }, items ), centre );
+    BOOST_CHECK_EQUAL( PCB_GRID_HELPER::LeadFootprint( { 5 * MM, 5 * MM }, items ), fp );
 }
 
 

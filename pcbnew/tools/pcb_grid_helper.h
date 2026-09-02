@@ -26,6 +26,7 @@
 #include <set>
 #include <vector>
 
+#include <preview_items/snap_readout.h>
 #include <settings/snap_settings.h>
 #include <tool/grid_helper.h>
 #include <snap/snap_resolver.h>
@@ -65,11 +66,73 @@ public:
 
     VECTOR2I Align( const VECTOR2I& aPoint, GRID_HELPER_GRIDS aGrid ) const override;
 
+    using GRID_HELPER::AlignTile;
+
+    /**
+     * Cell-centre alignment that honours PLACEMENT-role grid items the way Align() honours
+     * CURSOR-role ones.
+     */
+    VECTOR2I AlignTile( const VECTOR2I& aPoint, GRID_HELPER_GRIDS aGrid ) const override;
+
     VECTOR2I AlignToSegment ( const VECTOR2I& aPoint, const SEG& aSeg );
 
     VECTOR2I BestDragOrigin( const VECTOR2I& aMousePos, std::vector<BOARD_ITEM*>& aItem,
                              GRID_HELPER_GRIDS aGrid = GRID_HELPER_GRIDS::GRID_CURRENT,
                              const PCB_SELECTION_FILTER_OPTIONS* aSelectionFilter = nullptr );
+
+    /**
+     * True when the user's settings and the current editor call for tile snapping.
+     *
+     * The footprint editor arranges a footprint's own pads and never tile-snaps; the board
+     * editor follows PCBNEW_SETTINGS::m_FootprintTileSnap.
+     */
+    bool TileSnapPreferred() const;
+
+    /**
+     * True when every item is a footprint or a pad belonging to a footprint in the list, i.e.
+     * the selection the move tool builds when only footprints are being moved.
+     */
+    static bool IsFootprintOnlySelection( const std::vector<BOARD_ITEM*>& aItems );
+
+    /**
+     * The footprint a tile-snapped drag is steered by: the one under the mouse (smallest
+     * layout bounds wins), else the one whose placement centre is nearest the mouse.
+     */
+    static FOOTPRINT* LeadFootprint( const VECTOR2I& aMousePos, const std::vector<BOARD_ITEM*>& aItems );
+
+    /**
+     * The tile-snap counterpart of BestDragOrigin(): the drag reference is the lead footprint's
+     * placement centre, and no item anchors compete with it.
+     *
+     * @return the placement centre, or aMousePos when there is no lead footprint.
+     */
+    VECTOR2I TileDragOrigin( const VECTOR2I& aMousePos, const std::vector<BOARD_ITEM*>& aItems );
+
+    /**
+     * What the last ResolveSnap() did with a tile-snapped footprint, for the on-canvas readout.
+     */
+    struct SNAP_READOUT_STATE
+    {
+        enum class KIND
+        {
+            NONE,    ///< Not tile snapping; nothing to say
+            FREE,    ///< Grid off and nothing else caught the item
+            TILE,    ///< Centre landed on a grid tile
+            LATTICE, ///< Pads fell into step with a neighbouring footprint (detail = its reference)
+            OBJECT   ///< Some other object snap won
+        };
+
+        KIND     kind = KIND::NONE;
+        wxString detail;
+    };
+
+    const SNAP_READOUT_STATE& GetLastReadout() const { return m_readoutState; }
+
+    /**
+     * Human-readable size of the grid ResolveSnap() would use for aGrid, in the user's units
+     * (override-aware, so it matches what the footprint actually snapped to).
+     */
+    wxString GetGridDescription( GRID_HELPER_GRIDS aGrid ) const;
 
     VECTOR2I AlignToArc ( const VECTOR2I& aPoint, const SHAPE_ARC& aSeg );
 
@@ -195,8 +258,13 @@ private:
     void computeAnchors( BOARD_ITEM* aItem, const VECTOR2I& aRefPos, bool aFrom,
                          const PCB_SELECTION_FILTER_OPTIONS* aSelectionFilter );
 
+    /// Fill m_readoutState from a resolved frame and show or hide the on-canvas readout.
+    void updateReadout( const SNAP_RESULT& aResult, GRID_HELPER_GRIDS aGrid, const wxString& aLatticeLabel );
+
 private:
     MAGNETIC_SETTINGS*               m_magneticSettings;
+    KIGFX::SNAP_READOUT              m_readout;
+    SNAP_READOUT_STATE               m_readoutState;
 
     std::vector<NEARABLE_GEOM>       m_pointOnLineCandidates;
 

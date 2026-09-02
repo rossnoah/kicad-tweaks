@@ -75,7 +75,8 @@ enum class SNAP_CANDIDATE_SUBTYPE
     ACTIVE_EXTENSION,
     ANGLE_BRANCH,
     GRID_AXIS,
-    CURSOR
+    CURSOR,
+    LATTICE_LAYOUT ///< Pad lattice of a moving footprint falling into step with a neighbour's
 };
 
 
@@ -95,7 +96,8 @@ enum class SNAP_RELATION
     BBOX_ALIGNMENT,
     BBOX_EQUAL_GAP,
     GRID_X,
-    GRID_Y
+    GRID_Y,
+    LATTICE_ALIGNMENT
 };
 
 
@@ -135,7 +137,9 @@ enum class SNAP_ID_KIND
     COPY_GAP_X,
     COPY_GAP_Y,
     GRID_X,
-    GRID_Y
+    GRID_Y,
+    LATTICE_X,
+    LATTICE_Y
 };
 
 

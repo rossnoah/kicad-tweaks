@@ -399,6 +399,17 @@ public:
 
     VECTOR2I GetCenter() const override { return GetBoundingBox( false ).GetCenter(); }
 
+    /**
+     * The point the board editor snaps when placing this footprint.
+     *
+     * The courtyard is the designer's statement of the part's extent, so its bounding-box
+     * centre wins when a well-formed courtyard exists on the footprint's side.  Without one,
+     * the pads' bounding-box centre is used, and a footprint with neither falls back to the
+     * text-free bounding box.  The footprint origin never takes part, since library authors
+     * place it wherever they like.
+     */
+    VECTOR2I GetPlacementCentre() const;
+
     std::deque<PAD*>& Pads()               { return m_pads; }
     const std::deque<PAD*>& Pads() const   { return m_pads; }
 
