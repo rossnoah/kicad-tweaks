@@ -22,6 +22,13 @@
 #define INCLUDE_THREAD_POOL_H_
 
 #include <bs_thread_pool.hpp>
+
+#ifdef _WIN32
+// bs_thread_pool.hpp pulls in <windows.h>, whose macros (GetObject, GetClassInfo, ...)
+// mangle method names in every wx header included after it.
+#include <wx/msw/winundef.h>
+#endif
+
 #include <import_export.h>
 
 using thread_pool = BS::priority_thread_pool;

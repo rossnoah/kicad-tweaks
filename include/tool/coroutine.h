@@ -48,6 +48,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <wx/msw/winundef.h> // windows.h macros mangle wx method names otherwise
 #else                   // Linux, BSD, MacOS
 #include <unistd.h>     // getpagesize
 #include <sys/mman.h>   // mmap, mprotect, munmap
