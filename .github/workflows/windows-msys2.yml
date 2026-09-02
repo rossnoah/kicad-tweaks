@@ -1,7 +1,12 @@
 name: Windows build (MSYS2)
 
-# Manual trigger only: a full KiCad build takes a couple of hours on a hosted runner.
+# A full KiCad build takes a couple of hours on a hosted runner, so this runs on demand.
+# workflow_dispatch only becomes available once this file is on the default branch; until
+# then a push that touches this file on a feature branch also starts a run.
 on:
+  push:
+    branches: ['worktree-*']
+    paths: ['.github/workflows/windows-msys2.yml']
   workflow_dispatch:
     inputs:
       build_type:
@@ -14,6 +19,8 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 340
+    env:
+      BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
     defaults:
       run:
         shell: msys2 {0}
@@ -61,7 +68,7 @@ jobs:
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_INSTALL_PREFIX="$PWD/install" \
             -DKICAD_SCRIPTING_WXPYTHON=OFF \
             -DKICAD_BUILD_I18N=OFF \
@@ -99,6 +106,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kicad-tweaks-windows-${{ inputs.build_type }}-${{ github.sha }}
+          name: kicad-tweaks-windows-${{ env.BUILD_TYPE }}-${{ github.sha }}
           path: install
           compression-level: 6
