@@ -5,24 +5,24 @@ KiCad ships with and is the right choice for an installer.
 
 ## MSYS2 (about two hours, no Visual Studio needed)
 
-1. Install MSYS2 from https://www.msys2.org and open the **MSYS2 MINGW64** shell.
+1. Install MSYS2 from https://www.msys2.org and open the **MSYS2 UCRT64** shell.
 2. Install the toolchain and dependencies (same set as the MSYS2 `kicad` package):
 
    ```
    pacman -S --needed git \
-     mingw-w64-x86_64-cc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja \
-     mingw-w64-x86_64-pkgconf mingw-w64-x86_64-boost mingw-w64-x86_64-doxygen \
-     mingw-w64-x86_64-swig mingw-w64-x86_64-wxwidgets3.2-msw \
-     mingw-w64-x86_64-abseil-cpp mingw-w64-x86_64-cairo mingw-w64-x86_64-curl \
-     mingw-w64-x86_64-freeglut mingw-w64-x86_64-glew mingw-w64-x86_64-glm \
-     mingw-w64-x86_64-nng mingw-w64-x86_64-protobuf mingw-w64-x86_64-libgit2 \
-     mingw-w64-x86_64-ngspice mingw-w64-x86_64-python mingw-w64-x86_64-opencascade \
-     mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib mingw-w64-x86_64-zstd \
-     mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-icu \
-     mingw-w64-x86_64-gettext mingw-w64-x86_64-unixodbc
+     mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja \
+     mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-boost mingw-w64-ucrt-x86_64-doxygen \
+     mingw-w64-ucrt-x86_64-swig mingw-w64-ucrt-x86_64-wxwidgets3.2-msw \
+     mingw-w64-ucrt-x86_64-abseil-cpp mingw-w64-ucrt-x86_64-cairo mingw-w64-ucrt-x86_64-curl \
+     mingw-w64-ucrt-x86_64-freeglut mingw-w64-ucrt-x86_64-glew mingw-w64-ucrt-x86_64-glm \
+     mingw-w64-ucrt-x86_64-nng mingw-w64-ucrt-x86_64-protobuf mingw-w64-ucrt-x86_64-libgit2 \
+     mingw-w64-ucrt-x86_64-ngspice mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-opencascade \
+     mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-zlib mingw-w64-ucrt-x86_64-zstd \
+     mingw-w64-ucrt-x86_64-harfbuzz mingw-w64-ucrt-x86_64-sqlite3 mingw-w64-ucrt-x86_64-icu \
+     mingw-w64-ucrt-x86_64-gettext mingw-w64-ucrt-x86_64-unixodbc
    ```
 
-   Add `mingw-w64-x86_64-wxPython` and drop `-DKICAD_SCRIPTING_WXPYTHON=OFF` below if you
+   Add `mingw-w64-ucrt-x86_64-wxPython` and drop `-DKICAD_SCRIPTING_WXPYTHON=OFF` below if you
    want the Python console.
 
 3. Clone and build. Clone into the MSYS2 home, not into `/mnt/c` or a WSL path, or the
@@ -42,7 +42,7 @@ KiCad ships with and is the right choice for an installer.
    cmake --build build --parallel
    ```
 
-4. Run it from the MINGW64 shell (the MinGW DLLs are on that shell's PATH):
+4. Run it from the UCRT64 shell (the MinGW DLLs are on that shell's PATH):
 
    ```
    ./build/pcbnew/pcbnew.exe
