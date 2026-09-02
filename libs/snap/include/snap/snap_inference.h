@@ -54,12 +54,31 @@ struct SNAP_ALIGNMENT_POINT
 };
 
 
+/**
+ * The regular pad lattice of a footprint: its dominant pitch per axis and the pad centres.
+ *
+ * For a stationary lattice the points are world positions.  For the moving lattice they are
+ * offsets from SNAP_SOURCE_CONTEXT::sourcePoint, so they follow the cursor.
+ */
+struct SNAP_LATTICE
+{
+    SNAP_STABLE_ID                id;
+    std::optional<int>            pitchX;
+    std::optional<int>            pitchY;
+    std::vector<VECTOR2I>         points;
+    BOX2I                         bounds;
+    std::optional<SNAP_TARGET_ID> parent;
+};
+
+
 class SNAP_INFERENCE_PROVIDER
 {
 public:
     void AddPath( SNAP_OBJECT_PATH aPath );
     void AddBounds( SNAP_OBJECT_BOUNDS aBounds );
     void AddAlignmentPoint( SNAP_ALIGNMENT_POINT aPoint );
+    void AddLattice( SNAP_LATTICE aLattice );
+    void SetMovingLattice( std::optional<SNAP_LATTICE> aLattice );
     void Clear();
 
     void ActivateExtension( const SNAP_STABLE_ID& aId );
@@ -71,6 +90,17 @@ public:
     std::vector<SNAP_CANDIDATE> CollectAlignment( const SNAP_SOURCE_CONTEXT& aContext, int aRadius ) const;
     std::vector<SNAP_CANDIDATE> CollectEqualSpacing( const SNAP_SOURCE_CONTEXT& aContext, int aRadius ) const;
 
+    /**
+     * Candidates that put the moving lattice's pads in step with a stationary lattice of the
+     * same pitch, one per stationary lattice per axis, each carrying a snap-line guide through
+     * the two pad centres that line up.
+     *
+     * @param aRadius how far (in IU) the moving pads may be from the neighbour's rhythm
+     * @param aPitchTolerance how different two pitches may be and still count as the same
+     */
+    std::vector<SNAP_CANDIDATE> CollectLatticeAlignment( const SNAP_SOURCE_CONTEXT& aContext, int aRadius,
+                                                         int aPitchTolerance ) const;
+
 private:
     bool eligible( const SNAP_SOURCE_CONTEXT& aContext, const SNAP_STABLE_ID& aId ) const;
     bool eligible( const SNAP_SOURCE_CONTEXT& aContext, const SNAP_OBJECT_BOUNDS& aBounds ) const;
@@ -79,6 +109,8 @@ private:
     std::vector<SNAP_OBJECT_PATH>     m_paths;
     std::vector<SNAP_OBJECT_BOUNDS>   m_bounds;
     std::vector<SNAP_ALIGNMENT_POINT> m_alignmentPoints;
+    std::vector<SNAP_LATTICE>         m_lattices;
+    std::optional<SNAP_LATTICE>       m_movingLattice;
     std::vector<SNAP_STABLE_ID>       m_activeExtensions;
 };
 

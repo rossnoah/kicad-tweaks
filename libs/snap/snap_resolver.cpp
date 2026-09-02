@@ -137,8 +137,11 @@ SNAP_TARGET_ID pairTarget( const SNAP_TARGET_ID& aFirst, const SNAP_TARGET_ID& a
 
 std::optional<bool> layoutAxis( const SNAP_CANDIDATE& aCandidate )
 {
-    if( aCandidate.subtype != SNAP_CANDIDATE_SUBTYPE::BBOX_LAYOUT )
+    if( aCandidate.subtype != SNAP_CANDIDATE_SUBTYPE::BBOX_LAYOUT
+        && aCandidate.subtype != SNAP_CANDIDATE_SUBTYPE::LATTICE_LAYOUT )
+    {
         return std::nullopt;
+    }
 
     return std::abs( aCandidate.direction.x ) >= std::abs( aCandidate.direction.y );
 }
@@ -242,9 +245,12 @@ int subtypeRank( SNAP_CANDIDATE_SUBTYPE aSubtype )
     case SNAP_CANDIDATE_SUBTYPE::CONSTRUCTED_POINT:
     case SNAP_CANDIDATE_SUBTYPE::INTERSECTION: return 1;
     case SNAP_CANDIDATE_SUBTYPE::TANGENT_NORMAL: return 2;
-    case SNAP_CANDIDATE_SUBTYPE::BBOX_LAYOUT: return 3;
-    case SNAP_CANDIDATE_SUBTYPE::FINITE_MANIFOLD: return 4;
-    case SNAP_CANDIDATE_SUBTYPE::ACTIVE_EXTENSION: return 5;
+    // A pad lattice falling into step with a neighbour is a stronger statement than two
+    // bounding boxes happening to share an edge, so it outranks bbox layout.
+    case SNAP_CANDIDATE_SUBTYPE::LATTICE_LAYOUT: return 3;
+    case SNAP_CANDIDATE_SUBTYPE::BBOX_LAYOUT: return 4;
+    case SNAP_CANDIDATE_SUBTYPE::FINITE_MANIFOLD: return 5;
+    case SNAP_CANDIDATE_SUBTYPE::ACTIVE_EXTENSION: return 6;
     case SNAP_CANDIDATE_SUBTYPE::ANGLE_BRANCH: return 0;
     case SNAP_CANDIDATE_SUBTYPE::GRID_AXIS: return 0;
     case SNAP_CANDIDATE_SUBTYPE::CURSOR: return 0;

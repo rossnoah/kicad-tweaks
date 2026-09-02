@@ -109,6 +109,14 @@ public:
     VECTOR2I TileDragOrigin( const VECTOR2I& aMousePos, const std::vector<BOARD_ITEM*>& aItems );
 
     /**
+     * The footprint whose pad lattice may fall into step with neighbours during a tile-snapped
+     * drag.  Its pitch is re-detected every resolve so rotation mid-drag is honoured.  Pass
+     * nullptr to stop offering pitch guides.
+     */
+    void SetTileLead( FOOTPRINT* aFootprint ) { m_tileLead = aFootprint; }
+    FOOTPRINT* GetTileLead() const { return m_tileLead; }
+
+    /**
      * What the last ResolveSnap() did with a tile-snapped footprint, for the on-canvas readout.
      */
     struct SNAP_READOUT_STATE
@@ -265,6 +273,7 @@ private:
     MAGNETIC_SETTINGS*               m_magneticSettings;
     KIGFX::SNAP_READOUT              m_readout;
     SNAP_READOUT_STATE               m_readoutState;
+    FOOTPRINT*                       m_tileLead = nullptr;
 
     std::vector<NEARABLE_GEOM>       m_pointOnLineCandidates;
 

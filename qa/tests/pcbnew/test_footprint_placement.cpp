@@ -23,6 +23,7 @@
 #include <footprint.h>
 #include <pad.h>
 #include <pcb_shape.h>
+#include <footprint_pitch.h>
 
 
 namespace
@@ -145,6 +146,89 @@ BOOST_AUTO_TEST_CASE( FlippedFootprintUsesBackCourtyard )
 
     // The rectangle mirrors about the X axis; its centre had y = 0 so it stays put.
     BOOST_CHECK_EQUAL( fp.GetPlacementCentre(), VECTOR2I( 2 * MM, 0 ) );
+}
+
+
+BOOST_AUTO_TEST_CASE( DominantSpacingOfRegularRow )
+{
+    const int inch = pcbIUScale.mmToIU( 2.54 );
+    const int tol = pcbIUScale.mmToIU( 0.01 );
+
+    std::optional<int> pitch = DominantSpacing( { 0, inch, 2 * inch, 3 * inch }, tol );
+    BOOST_REQUIRE( pitch.has_value() );
+    BOOST_CHECK_EQUAL( *pitch, inch );
+
+    // Order does not matter, and near-duplicates collapse into one column.
+    pitch = DominantSpacing( { 3 * inch, 0, inch + 3, 2 * inch, inch - 2 }, tol );
+    BOOST_REQUIRE( pitch.has_value() );
+    BOOST_CHECK_EQUAL( *pitch, inch );
+
+    // Two pads still have a spacing.
+    pitch = DominantSpacing( { 0, 2 * MM }, tol );
+    BOOST_REQUIRE( pitch.has_value() );
+    BOOST_CHECK_EQUAL( *pitch, 2 * MM );
+}
+
+
+BOOST_AUTO_TEST_CASE( DominantSpacingRejectsIrregularRows )
+{
+    const int tol = pcbIUScale.mmToIU( 0.01 );
+
+    BOOST_CHECK( !DominantSpacing( { 0 }, tol ).has_value() );
+    BOOST_CHECK( !DominantSpacing( { 0, 3 }, tol ).has_value() );
+    BOOST_CHECK( !DominantSpacing( { 0, MM, 3 * MM, 7 * MM, 15 * MM }, tol ).has_value() );
+    BOOST_CHECK( !DominantSpacing( { 0, 2 * MM, 4 * MM }, tol, 4 ).has_value() );
+}
+
+
+BOOST_AUTO_TEST_CASE( DetectFootprintPitchOnBothAxes )
+{
+    const int inch = pcbIUScale.mmToIU( 2.54 );
+    BOARD     board;
+    FOOTPRINT fp( &board );
+    fp.SetPosition( { 0, 0 } );
+
+    for( int row = 0; row < 2; ++row )
+    {
+        for( int col = 0; col < 5; ++col )
+            AddCirclePad( fp, { col * inch, row * inch } );
+    }
+
+    // A mounting hole must not disturb the rhythm.
+    AddCirclePad( fp, { 7 * MM, 9 * MM }, PAD_ATTRIB::NPTH );
+
+    FOOTPRINT_PITCH pitch = DetectFootprintPitch( fp );
+    BOOST_REQUIRE( pitch.x.has_value() );
+    BOOST_REQUIRE( pitch.y.has_value() );
+    BOOST_CHECK_EQUAL( *pitch.x, inch );
+    BOOST_CHECK_EQUAL( *pitch.y, inch );
+    BOOST_CHECK_EQUAL( pitch.centres.size(), 10 );
+    BOOST_CHECK( SamePitch( *pitch.x, inch ) );
+    BOOST_CHECK( !SamePitch( *pitch.x, MM ) );
+}
+
+
+BOOST_AUTO_TEST_CASE( DetectFootprintPitchFollowsRotation )
+{
+    const int inch = pcbIUScale.mmToIU( 2.54 );
+    BOARD     board;
+    FOOTPRINT fp( &board );
+    fp.SetPosition( { 0, 0 } );
+
+    for( int col = 0; col < 4; ++col )
+        AddCirclePad( fp, { col * inch, 0 } );
+
+    FOOTPRINT_PITCH pitch = DetectFootprintPitch( fp );
+    BOOST_REQUIRE( pitch.x.has_value() );
+    BOOST_CHECK( !pitch.y.has_value() ); // a single row has no vertical rhythm
+
+    // A quarter turn swaps the axes: the row becomes a column.
+    fp.Rotate( { 0, 0 }, EDA_ANGLE( 90.0, DEGREES_T ) );
+
+    pitch = DetectFootprintPitch( fp );
+    BOOST_CHECK( !pitch.x.has_value() );
+    BOOST_REQUIRE( pitch.y.has_value() );
+    BOOST_CHECK_EQUAL( *pitch.y, inch );
 }
 
 

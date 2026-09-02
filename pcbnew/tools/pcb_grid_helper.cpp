@@ -24,6 +24,7 @@
 #include <functional>
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <unordered_set>
 
 #include <advanced_config.h>
@@ -32,6 +33,7 @@
 #include <pcb_dimension.h>
 #include <pcb_shape.h>
 #include <footprint.h>
+#include <footprint_pitch.h>
 #include <pcb_table.h>
 #include <pad.h>
 #include <pcb_group.h>
@@ -1146,7 +1148,8 @@ SNAP_RESULT PCB_GRID_HELPER::ResolveSnap( const VECTOR2I& aOrigin, const LSET& a
     {
         ANCHOR_MARKER,
         GUIDE,
-        POINT_ON_ELEMENT
+        POINT_ON_ELEMENT,
+        LATTICE
     };
 
     struct PRESENTATION
@@ -1155,6 +1158,10 @@ SNAP_RESULT PCB_GRID_HELPER::ResolveSnap( const VECTOR2I& aOrigin, const LSET& a
         std::optional<ANCHOR> anchor;
         bool                  proposeConstruction = false;
     };
+
+    // Reference designators of the footprints whose lattices were offered, by candidate id,
+    // so the readout can say whose rhythm the moving part fell into.
+    std::map<SNAP_STABLE_ID, wxString> latticeLabels;
 
     SNAP_FRAME_INPUT<PRESENTATION> frame;
     frame.context = context;
@@ -1189,6 +1196,121 @@ SNAP_RESULT PCB_GRID_HELPER::ResolveSnap( const VECTOR2I& aOrigin, const LSET& a
 
         for( SNAP_CANDIDATE& candidate : spacing )
             frame.candidates.push_back( std::move( candidate ) );
+    }
+
+    // Pitch guides: a tile-snapped footprint whose pads can fall into step with a neighbour of
+    // the same pitch.  Independent of the alignment/distribution preference, since it is what
+    // makes mating connectors line up regardless of the grid.
+    if( m_tileSnap && m_enableSnap && m_tileLead && context.movingBounds && aMovingReferencePoint )
+    {
+        const FOOTPRINT_PITCH movingPitch = DetectFootprintPitch( *m_tileLead );
+
+        if( movingPitch.Any() )
+        {
+            constexpr size_t MAX_LATTICE_NEIGHBOURS = 8;
+
+            BOX2I movingBounds = *context.movingBounds;
+            movingBounds.Offset( context.sourcePoint - *aMovingReferencePoint );
+
+            int reach = snapRange;
+
+            if( movingPitch.x )
+                reach = std::max( reach, 4 * *movingPitch.x );
+
+            if( movingPitch.y )
+                reach = std::max( reach, 4 * *movingPitch.y );
+
+            BOX2I area = movingBounds;
+            area.Inflate( reach );
+
+            std::unordered_set<BOARD_ITEM*> moving( aSkip.begin(), aSkip.end() );
+
+            for( BOARD_ITEM* item : aSkip )
+            {
+                for( FOOTPRINT* parent = item ? item->GetParentFootprint() : nullptr; parent;
+                     parent = parent->GetParentFootprint() )
+                {
+                    moving.insert( parent );
+                }
+            }
+
+            std::vector<FOOTPRINT*> neighbours;
+
+            for( BOARD_ITEM* item : queryVisible( { area }, aSkip ) )
+            {
+                FOOTPRINT* footprint = item->Type() == PCB_FOOTPRINT_T ? static_cast<FOOTPRINT*>( item )
+                                                                        : item->GetParentFootprint();
+
+                if( !footprint || moving.count( footprint ) )
+                    continue;
+
+                if( std::find( neighbours.begin(), neighbours.end(), footprint ) == neighbours.end() )
+                    neighbours.push_back( footprint );
+            }
+
+            const auto boundsDistance = [&]( const FOOTPRINT* aFootprint ) -> long long
+            {
+                const BOX2I bounds = layoutBounds( *aFootprint );
+                const int   dx = std::max( { bounds.GetLeft() - movingBounds.GetRight(),
+                                             movingBounds.GetLeft() - bounds.GetRight(), 0 } );
+                const int   dy = std::max( { bounds.GetTop() - movingBounds.GetBottom(),
+                                             movingBounds.GetTop() - bounds.GetBottom(), 0 } );
+                return (long long) dx * dx + (long long) dy * dy;
+            };
+
+            std::sort( neighbours.begin(), neighbours.end(),
+                       [&]( const FOOTPRINT* aFirst, const FOOTPRINT* aSecond )
+                       {
+                           return boundsDistance( aFirst ) < boundsDistance( aSecond );
+                       } );
+
+            if( neighbours.size() > MAX_LATTICE_NEIGHBOURS )
+                neighbours.resize( MAX_LATTICE_NEIGHBOURS );
+
+            for( FOOTPRINT* footprint : neighbours )
+            {
+                FOOTPRINT_PITCH pitch = DetectFootprintPitch( *footprint );
+
+                if( !pitch.Any() )
+                    continue;
+
+                SNAP_STABLE_ID id{ SNAP_ID_KIND::ITEM_GEOMETRY, SnapTargetId( footprint->m_Uuid ),
+                                   static_cast<int>( PCB_FOOTPRINT_T ), 0 };
+
+                std::optional<SNAP_TARGET_ID> parent;
+
+                if( footprint->GetParent() )
+                    parent = SnapTargetId( footprint->GetParent()->m_Uuid );
+
+                latticeLabels[MakeDerivedSnapId( SNAP_ID_KIND::LATTICE_X, id )] = footprint->GetReference();
+                latticeLabels[MakeDerivedSnapId( SNAP_ID_KIND::LATTICE_Y, id )] = footprint->GetReference();
+
+                inferenceProvider.AddLattice( { id, pitch.x, pitch.y, std::move( pitch.centres ),
+                                                layoutBounds( *footprint ), std::move( parent ) } );
+            }
+
+            // The moving lattice travels with the cursor: store its pads as offsets from the
+            // reference point that the source point stands in for.
+            SNAP_LATTICE movingLattice;
+            movingLattice.pitchX = movingPitch.x;
+            movingLattice.pitchY = movingPitch.y;
+            movingLattice.bounds = movingBounds;
+
+            for( const VECTOR2I& centre : movingPitch.centres )
+                movingLattice.points.push_back( centre - *aMovingReferencePoint );
+
+            inferenceProvider.SetMovingLattice( std::move( movingLattice ) );
+
+            const int pitchTolerance = pcbIUScale.mmToIU( 0.01 );
+
+            for( SNAP_CANDIDATE& candidate : inferenceProvider.CollectLatticeAlignment( context, snapRange,
+                                                                                        pitchTolerance ) )
+            {
+                frame.presentation.emplace( candidate.id,
+                                            PRESENTATION{ PRESENTATION_KIND::LATTICE, std::nullopt, false } );
+                frame.candidates.push_back( std::move( candidate ) );
+            }
+        }
     }
 
     emitSelfAndGridCandidates( frame.candidates, context, aOrigin, nearestGrid, snapScale, snapRange, m_enableGrid );
@@ -1452,7 +1574,7 @@ SNAP_RESULT PCB_GRID_HELPER::ResolveSnap( const VECTOR2I& aOrigin, const LSET& a
             if( presentation.proposeConstruction )
                 proposeConstructionForItems( m_snapItem->items );
         }
-        else if( presentation.kind == PRESENTATION_KIND::GUIDE )
+        else if( presentation.kind == PRESENTATION_KIND::GUIDE || presentation.kind == PRESENTATION_KIND::LATTICE )
         {
             suppressHoverActivation = true;
             snapLineManager.SetSnapLineEnd( result.position );
@@ -1470,7 +1592,21 @@ SNAP_RESULT PCB_GRID_HELPER::ResolveSnap( const VECTOR2I& aOrigin, const LSET& a
     }
 
     applySnapResultGuides( result );
-    updateReadout( result, aGrid, wxEmptyString );
+
+    wxString latticeLabel;
+
+    for( const SNAP_STABLE_ID& id : result.accepted )
+    {
+        auto label = latticeLabels.find( id );
+
+        if( label != latticeLabels.end() )
+        {
+            latticeLabel = label->second;
+            break;
+        }
+    }
+
+    updateReadout( result, aGrid, latticeLabel );
 
     static const bool canActivateByHitTest = ADVANCED_CFG::GetCfg().m_ExtensionSnapActivateOnHover;
 

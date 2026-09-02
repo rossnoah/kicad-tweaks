@@ -1541,6 +1541,7 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
                     if( grid.GetTileSnap() )
                     {
                         tileLead = PCB_GRID_HELPER::LeadFootprint( originalMousePos, sel_items );
+                        grid.SetTileLead( tileLead );
                         m_cursor = grid.TileDragOrigin( originalMousePos, sel_items );
                     }
                     else
@@ -1702,6 +1703,8 @@ bool EDIT_TOOL::doMoveSelection( const TOOL_EVENT& aEvent, BOARD_COMMIT* aCommit
 
                     if( grid.GetTileSnap() )
                         tileLead = static_cast<FOOTPRINT*>( nextItem );
+
+                    grid.SetTileLead( tileLead );
 
                     // Pick up new item
                     aCommit->Modify( nextItem, nullptr, RECURSE_MODE::RECURSE );

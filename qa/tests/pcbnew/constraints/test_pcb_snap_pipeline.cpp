@@ -812,6 +812,72 @@ BOOST_FIXTURE_TEST_CASE( FootprintOnlySelectionRule, PCB_SNAP_FIXTURE )
 }
 
 
+BOOST_FIXTURE_TEST_CASE( PitchGuideBeatsTile, PCB_SNAP_FIXTURE )
+{
+    const int inch = pcbIUScale.mmToIU( 2.54 );
+    const std::vector<VECTOR2I> header = { { 0, 0 }, { inch, 0 }, { 2 * inch, 0 }, { 3 * inch, 0 } };
+
+    // J1 sits on the rhythm; J2 is a hair off it, one row down.
+    const int  phase = std::min( helper->SnapRange() / 2, pcbIUScale.mmToIU( 0.1 ) );
+    FOOTPRINT* j1 = AddFootprint( { 10 * MM, 10 * MM }, header, std::nullopt, wxS( "J1" ) );
+    FOOTPRINT* j2 = AddFootprint( { 10 * MM + phase, 14 * MM }, header, std::nullopt, wxS( "J2" ) );
+    (void) j1;
+
+    const VECTOR2I centre = j2->GetPlacementCentre();
+
+    helper->SetTileSnap( true );
+    helper->SetTileLead( j2 );
+
+    SNAP_RESULT result = helper->ResolveSnap( centre, LSET( { F_Cu } ), GRID_CONNECTABLE, MovingItems( j2 ), centre );
+
+    // X comes from J1's lattice (pads back in step), Y from the tile row.
+    BOOST_CHECK_EQUAL( result.position.x, centre.x - phase );
+    BOOST_CHECK_EQUAL( result.position.y, 14 * MM + MM / 2 );
+    BOOST_CHECK( std::any_of( result.accepted.begin(), result.accepted.end(),
+                              []( const SNAP_STABLE_ID& aId )
+                              {
+                                  return aId.kind == SNAP_ID_KIND::LATTICE_X;
+                              } ) );
+    BOOST_CHECK( result.Accepted( { SNAP_ID_KIND::GRID_Y } ) );
+    BOOST_CHECK( std::any_of( result.guides.begin(), result.guides.end(),
+                              []( const SNAP_GUIDE& aGuide )
+                              {
+                                  return aGuide.style == SNAP_GUIDE_STYLE::SNAP_LINE;
+                              } ) );
+    BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::LATTICE );
+    BOOST_CHECK_EQUAL( helper->GetLastReadout().detail, wxS( "J1" ) );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( ShiftDisablesPitchGuideNotTile, PCB_SNAP_FIXTURE )
+{
+    const int inch = pcbIUScale.mmToIU( 2.54 );
+    const std::vector<VECTOR2I> header = { { 0, 0 }, { inch, 0 }, { 2 * inch, 0 }, { 3 * inch, 0 } };
+
+    const int  phase = std::min( helper->SnapRange() / 2, pcbIUScale.mmToIU( 0.1 ) );
+    FOOTPRINT* j1 = AddFootprint( { 10 * MM, 10 * MM }, header, std::nullopt, wxS( "J1" ) );
+    FOOTPRINT* j2 = AddFootprint( { 10 * MM + phase, 14 * MM }, header, std::nullopt, wxS( "J2" ) );
+    (void) j1;
+
+    const VECTOR2I centre = j2->GetPlacementCentre();
+
+    helper->SetTileSnap( true );
+    helper->SetTileLead( j2 );
+    helper->SetSnap( false ); // Shift held: object snapping off
+
+    SNAP_RESULT result = helper->ResolveSnap( centre, LSET( { F_Cu } ), GRID_CONNECTABLE, MovingItems( j2 ), centre );
+
+    BOOST_CHECK( !std::any_of( result.accepted.begin(), result.accepted.end(),
+                               []( const SNAP_STABLE_ID& aId )
+                               {
+                                   return aId.kind == SNAP_ID_KIND::LATTICE_X;
+                               } ) );
+    BOOST_CHECK( result.Accepted( { SNAP_ID_KIND::GRID_X } ) );
+    BOOST_CHECK( result.Accepted( { SNAP_ID_KIND::GRID_Y } ) );
+    BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::TILE );
+}
+
+
 BOOST_FIXTURE_TEST_CASE( TileDragOriginIsLeadFootprintCentre, PCB_SNAP_FIXTURE )
 {
     FOOTPRINT* fp = AddFootprint( { 5 * MM, 5 * MM }, { { 0, 0 }, { 2 * MM, 0 } } );

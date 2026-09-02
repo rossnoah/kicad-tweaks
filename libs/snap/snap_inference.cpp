@@ -206,6 +206,12 @@ struct AXIS_DESCRIPTOR
             IsX ? SNAP_ID_KIND::ANCHOR_POINT_X : SNAP_ID_KIND::ANCHOR_POINT_Y;
     static constexpr SNAP_ID_KIND equalGapKind = IsX ? SNAP_ID_KIND::EQUAL_GAP_X : SNAP_ID_KIND::EQUAL_GAP_Y;
     static constexpr SNAP_ID_KIND copyGapKind = IsX ? SNAP_ID_KIND::COPY_GAP_X : SNAP_ID_KIND::COPY_GAP_Y;
+    static constexpr SNAP_ID_KIND latticeKind = IsX ? SNAP_ID_KIND::LATTICE_X : SNAP_ID_KIND::LATTICE_Y;
+
+    static SNAP_ALWAYS_INLINE const std::optional<int>& pitch( const SNAP_LATTICE& aLattice )
+    {
+        return IsX ? aLattice.pitchX : aLattice.pitchY;
+    }
 
     static SNAP_ALWAYS_INLINE int coordinate( const VECTOR2I& aPoint ) { return IsX ? aPoint.x : aPoint.y; }
     static SNAP_ALWAYS_INLINE int perpendicularCoordinate( const VECTOR2I& aPoint )
@@ -284,11 +290,25 @@ void SNAP_INFERENCE_PROVIDER::AddAlignmentPoint( SNAP_ALIGNMENT_POINT aPoint )
 }
 
 
+void SNAP_INFERENCE_PROVIDER::AddLattice( SNAP_LATTICE aLattice )
+{
+    m_lattices.push_back( std::move( aLattice ) );
+}
+
+
+void SNAP_INFERENCE_PROVIDER::SetMovingLattice( std::optional<SNAP_LATTICE> aLattice )
+{
+    m_movingLattice = std::move( aLattice );
+}
+
+
 void SNAP_INFERENCE_PROVIDER::Clear()
 {
     m_paths.clear();
     m_bounds.clear();
     m_alignmentPoints.clear();
+    m_lattices.clear();
+    m_movingLattice.reset();
     m_activeExtensions.clear();
 }
 
@@ -896,6 +916,149 @@ std::vector<SNAP_CANDIDATE> SNAP_INFERENCE_PROVIDER::CollectEqualSpacing( const 
                                                                         - Axis::high( movingBounds ),
                                                                 *axisBounds[i - 1], *axisBounds[i] );
                     }
+                }
+            } );
+
+    std::sort_heap( result.begin(), result.end(), betterCandidate );
+    return result;
+}
+
+
+std::vector<SNAP_CANDIDATE> SNAP_INFERENCE_PROVIDER::CollectLatticeAlignment( const SNAP_SOURCE_CONTEXT& aContext,
+                                                                              int aRadius, int aPitchTolerance ) const
+{
+    constexpr size_t            MAX_CANDIDATES = 16;
+    std::vector<SNAP_CANDIDATE> result;
+
+    if( !m_movingLattice || m_movingLattice->points.empty() )
+        return result;
+
+    const auto betterCandidate = []( const SNAP_CANDIDATE& aLeft, const SNAP_CANDIDATE& aRight )
+    {
+        return std::forward_as_tuple( aLeft.normalizedScreenResidual, aLeft.id )
+               < std::forward_as_tuple( aRight.normalizedScreenResidual, aRight.id );
+    };
+
+    const auto retainCandidate = [&]( SNAP_CANDIDATE aCandidate )
+    {
+        if( result.size() < MAX_CANDIDATES )
+        {
+            result.push_back( std::move( aCandidate ) );
+            std::push_heap( result.begin(), result.end(), betterCandidate );
+        }
+        else if( betterCandidate( aCandidate, result.front() ) )
+        {
+            std::pop_heap( result.begin(), result.end(), betterCandidate );
+            result.back() = std::move( aCandidate );
+            std::push_heap( result.begin(), result.end(), betterCandidate );
+        }
+    };
+
+    // Moving pads are offsets from the source point, so they sit where the cursor puts them.
+    std::vector<VECTOR2I> moving;
+    moving.reserve( m_movingLattice->points.size() );
+
+    for( const VECTOR2I& offset : m_movingLattice->points )
+        moving.push_back( aContext.sourcePoint + offset );
+
+    // Bring a phase difference into (-pitch/2, pitch/2].
+    const auto wrap = []( long long aDelta, int aPitch ) -> int
+    {
+        long long half = aPitch / 2;
+        long long wrapped = ( ( aDelta + half ) % aPitch + aPitch ) % aPitch - half;
+        return static_cast<int>( wrapped );
+    };
+
+    forEachAxis(
+            [&]<typename Axis>()
+            {
+                const std::optional<int>& movingPitch = Axis::pitch( *m_movingLattice );
+
+                if( !movingPitch || *movingPitch <= 0 )
+                    return;
+
+                for( const SNAP_LATTICE& lattice : m_lattices )
+                {
+                    const std::optional<int>& pitch = Axis::pitch( lattice );
+
+                    if( !pitch || lattice.points.empty() || !eligible( aContext, lattice.id ) )
+                        continue;
+
+                    if( aContext.movingItem && lattice.parent && *lattice.parent == aContext.movingItem->target )
+                        continue;
+
+                    if( std::abs( *pitch - *movingPitch ) > aPitchTolerance )
+                        continue;
+
+                    // The moving pad nearest the neighbour, then the neighbour pad nearest to it:
+                    // the pair the guide is drawn through.
+                    const VECTOR2I* nearestMoving = nullptr;
+                    long long       nearestMovingDist = std::numeric_limits<long long>::max();
+
+                    for( const VECTOR2I& point : moving )
+                    {
+                        const int  perp = Axis::perpendicularCoordinate( point );
+                        const int  lo = Axis::perpendicularLow( lattice.bounds );
+                        const int  hi = Axis::perpendicularHigh( lattice.bounds );
+                        long long  perpDist = perp < lo ? lo - perp : ( perp > hi ? perp - hi : 0 );
+                        long long  alongDist = 0;
+                        const int  along = Axis::coordinate( point );
+                        const int  alo = Axis::low( lattice.bounds );
+                        const int  ahi = Axis::high( lattice.bounds );
+
+                        if( along < alo )
+                            alongDist = alo - along;
+                        else if( along > ahi )
+                            alongDist = along - ahi;
+
+                        const long long dist = perpDist * perpDist + alongDist * alongDist;
+
+                        if( dist < nearestMovingDist )
+                        {
+                            nearestMovingDist = dist;
+                            nearestMoving = &point;
+                        }
+                    }
+
+                    if( !nearestMoving )
+                        continue;
+
+                    const VECTOR2I* nearestStationary = nullptr;
+                    long long       nearestStationaryDist = std::numeric_limits<long long>::max();
+
+                    for( const VECTOR2I& point : lattice.points )
+                    {
+                        const long long dist = ( point - *nearestMoving ).SquaredEuclideanNorm();
+
+                        if( dist < nearestStationaryDist )
+                        {
+                            nearestStationaryDist = dist;
+                            nearestStationary = &point;
+                        }
+                    }
+
+                    if( !nearestStationary )
+                        continue;
+
+                    const int delta = wrap( static_cast<long long>( Axis::coordinate( *nearestStationary ) )
+                                                    - Axis::coordinate( *nearestMoving ),
+                                            *movingPitch );
+
+                    if( std::abs( delta ) > aRadius )
+                        continue;
+
+                    const int      coordinate = Axis::coordinate( aContext.sourcePoint ) + delta;
+                    SNAP_STABLE_ID id = MakeDerivedSnapId( Axis::latticeKind, lattice.id );
+                    SNAP_CANDIDATE candidate = Axis::candidate(
+                            std::move( id ), coordinate, std::abs( delta ) / static_cast<double>( std::max( 1, aRadius ) ) );
+
+                    candidate.subtype = SNAP_CANDIDATE_SUBTYPE::LATTICE_LAYOUT;
+                    candidate.relation = SNAP_RELATION::LATTICE_ALIGNMENT;
+                    candidate.referenceAffinity = 0;
+                    candidate.guides.push_back( { *nearestStationary, *nearestMoving + Axis::offset( delta ),
+                                                  SNAP_GUIDE_STYLE::SNAP_LINE } );
+
+                    retainCandidate( std::move( candidate ) );
                 }
             } );
 

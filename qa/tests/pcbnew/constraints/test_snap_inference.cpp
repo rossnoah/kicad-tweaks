@@ -927,4 +927,161 @@ BOOST_AUTO_TEST_CASE( CandidateDensityP95StaysWithinFourMilliseconds )
 }
 
 
+namespace
+{
+
+SNAP_LATTICE headerLattice( const char* aName, int aPitch, int aCount, const VECTOR2I& aFirstPad )
+{
+    SNAP_LATTICE lattice;
+    lattice.id = featureId( aName, "lattice" );
+    lattice.pitchX = aPitch;
+
+    for( int i = 0; i < aCount; ++i )
+        lattice.points.push_back( aFirstPad + VECTOR2I( i * aPitch, 0 ) );
+
+    lattice.bounds = BOX2I( aFirstPad - VECTOR2I( 10, 10 ), VECTOR2I( ( aCount - 1 ) * aPitch + 20, 20 ) );
+    return lattice;
+}
+
+
+SNAP_LATTICE movingHeader( int aPitch )
+{
+    // Two pads either side of the reference point (offsets, not positions).
+    SNAP_LATTICE lattice;
+    lattice.pitchX = aPitch;
+    lattice.points = { { -aPitch / 2, 0 }, { aPitch / 2, 0 } };
+    lattice.bounds = BOX2I( { -aPitch / 2 - 10, -10 }, { aPitch + 20, 20 } );
+    return lattice;
+}
+
+} // namespace
+
+
+BOOST_AUTO_TEST_CASE( LatticeAlignmentSnapsPadsIntoStep )
+{
+    SNAP_INFERENCE_PROVIDER provider;
+    provider.AddLattice( headerLattice( "J1", 254, 4, { 0, 0 } ) );
+    provider.SetMovingLattice( movingHeader( 254 ) );
+
+    SNAP_SOURCE_CONTEXT context;
+    context.sourcePoint = { 1040, 0 }; // moving pads at 913 and 1167: 103 short of the next rhythm
+    context.movingBounds = BOX2I( { 903, -10 }, { 274, 20 } );
+
+    std::vector<SNAP_CANDIDATE> candidates = provider.CollectLatticeAlignment( context, 120, 2 );
+
+    BOOST_REQUIRE_EQUAL( candidates.size(), 1 );
+
+    const SNAP_CANDIDATE& candidate = candidates.front();
+    BOOST_CHECK( candidate.id.kind == SNAP_ID_KIND::LATTICE_X );
+    BOOST_CHECK( candidate.subtype == SNAP_CANDIDATE_SUBTYPE::LATTICE_LAYOUT );
+    BOOST_CHECK( candidate.relation == SNAP_RELATION::LATTICE_ALIGNMENT );
+    BOOST_CHECK( candidate.priority == SNAP_PRIORITY_TIER::OBJECT );
+    BOOST_CHECK_EQUAL( candidate.origin.x, 1143.0 );
+
+    BOOST_REQUIRE_EQUAL( candidate.guides.size(), 1 );
+    BOOST_CHECK( candidate.guides.front().style == SNAP_GUIDE_STYLE::SNAP_LINE );
+    BOOST_CHECK_EQUAL( candidate.guides.front().start, VECTOR2I( 762, 0 ) );
+    BOOST_CHECK_EQUAL( candidate.guides.front().end, VECTOR2I( 1016, 0 ) );
+
+    SNAP_RESOLVER resolver;
+    resolver.AddCandidate( candidate );
+    BOOST_CHECK_EQUAL( resolver.Resolve( context ).position, VECTOR2I( 1143, 0 ) );
+}
+
+
+BOOST_AUTO_TEST_CASE( LatticeAlignmentRequiresMatchingPitch )
+{
+    SNAP_INFERENCE_PROVIDER provider;
+    provider.AddLattice( headerLattice( "J1", 200, 4, { 0, 0 } ) );
+    provider.SetMovingLattice( movingHeader( 254 ) );
+
+    SNAP_SOURCE_CONTEXT context;
+    context.sourcePoint = { 1040, 0 };
+    context.movingBounds = BOX2I( { 903, -10 }, { 274, 20 } );
+
+    BOOST_CHECK( provider.CollectLatticeAlignment( context, 120, 2 ).empty() );
+}
+
+
+BOOST_AUTO_TEST_CASE( LatticeAlignmentRespectsRadius )
+{
+    SNAP_INFERENCE_PROVIDER provider;
+    provider.AddLattice( headerLattice( "J1", 254, 4, { 0, 0 } ) );
+    provider.SetMovingLattice( movingHeader( 254 ) );
+
+    SNAP_SOURCE_CONTEXT context;
+    context.sourcePoint = { 1040, 0 };
+    context.movingBounds = BOX2I( { 903, -10 }, { 274, 20 } );
+
+    BOOST_CHECK( provider.CollectLatticeAlignment( context, 50, 2 ).empty() );
+}
+
+
+BOOST_AUTO_TEST_CASE( LatticeAlignmentIgnoresMovingParentAndMissingLattice )
+{
+    SNAP_INFERENCE_PROVIDER provider;
+    SNAP_LATTICE            lattice = headerLattice( "J1", 254, 4, { 0, 0 } );
+    lattice.parent = targetId( "moving" );
+    provider.AddLattice( lattice );
+
+    SNAP_SOURCE_CONTEXT context;
+    context.sourcePoint = { 1040, 0 };
+    context.movingBounds = BOX2I( { 903, -10 }, { 274, 20 } );
+    context.movingItem = SNAP_STABLE_ID{ SNAP_ID_KIND::ITEM_GEOMETRY, targetId( "moving" ) };
+
+    // No moving lattice at all: nothing.
+    BOOST_CHECK( provider.CollectLatticeAlignment( context, 120, 2 ).empty() );
+
+    // A lattice belonging to the moving item: nothing.
+    provider.SetMovingLattice( movingHeader( 254 ) );
+    BOOST_CHECK( provider.CollectLatticeAlignment( context, 120, 2 ).empty() );
+
+    // Clear drops both.
+    provider.Clear();
+    BOOST_CHECK( provider.CollectLatticeAlignment( context, 120, 2 ).empty() );
+}
+
+
+BOOST_AUTO_TEST_CASE( LatticeAlignmentTransposes )
+{
+    SNAP_INFERENCE_PROVIDER provider;
+    provider.AddLattice( headerLattice( "J1", 254, 4, { 0, 0 } ) );
+    provider.SetMovingLattice( movingHeader( 254 ) );
+
+    SNAP_SOURCE_CONTEXT context;
+    context.sourcePoint = { 1040, 0 };
+    context.movingBounds = BOX2I( { 903, -10 }, { 274, 20 } );
+
+    SNAP_INFERENCE_PROVIDER transposedProvider;
+    SNAP_LATTICE            stationary = headerLattice( "J1", 254, 4, { 0, 0 } );
+    SNAP_LATTICE            moving = movingHeader( 254 );
+
+    for( SNAP_LATTICE* lattice : { &stationary, &moving } )
+    {
+        std::swap( lattice->pitchX, lattice->pitchY );
+        lattice->bounds = transpose( lattice->bounds );
+
+        for( VECTOR2I& point : lattice->points )
+            point = transpose( point );
+    }
+
+    transposedProvider.AddLattice( stationary );
+    transposedProvider.SetMovingLattice( moving );
+
+    SNAP_SOURCE_CONTEXT transposedContext = context;
+    transposedContext.sourcePoint = transpose( context.sourcePoint );
+    transposedContext.movingBounds = transpose( *context.movingBounds );
+
+    std::vector<SNAP_CANDIDATE> expected = provider.CollectLatticeAlignment( context, 120, 2 );
+    std::vector<SNAP_CANDIDATE> actual = transposedProvider.CollectLatticeAlignment( transposedContext, 120, 2 );
+
+    BOOST_REQUIRE_EQUAL( expected.size(), 1 );
+    BOOST_REQUIRE_EQUAL( actual.size(), 1 );
+    BOOST_CHECK( actual.front().id.kind == SNAP_ID_KIND::LATTICE_Y );
+    BOOST_CHECK_EQUAL( actual.front().origin.y, expected.front().origin.x );
+    BOOST_CHECK_EQUAL( actual.front().guides.front().start, transpose( expected.front().guides.front().start ) );
+    BOOST_CHECK_EQUAL( actual.front().guides.front().end, transpose( expected.front().guides.front().end ) );
+}
+
+
 BOOST_AUTO_TEST_SUITE_END()
