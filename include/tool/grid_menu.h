@@ -29,7 +29,12 @@ struct WINDOW_SETTINGS;
 class GRID_MENU : public ACTION_MENU
 {
 public:
-    GRID_MENU( EDA_DRAW_FRAME* aParent );
+    /**
+     * @param aChooser true for the stand-alone menu the grid hotkey pops at the cursor: no
+     *                 grid-origin entry, and an "Edit Grids..." entry at the bottom.  False for
+     *                 the Grid submenu of a context menu.
+     */
+    GRID_MENU( EDA_DRAW_FRAME* aParent, bool aChooser = false );
 
     void UpdateTitle() override;
 
@@ -38,7 +43,7 @@ public:
 private:
     ACTION_MENU* create() const override
     {
-        return new GRID_MENU( m_parent );
+        return new GRID_MENU( m_parent, m_chooser );
     }
 
     OPT_TOOL_EVENT eventHandler( const wxMenuEvent& aEvent ) override;
@@ -46,4 +51,5 @@ private:
 
 private:
     EDA_DRAW_FRAME* m_parent;
+    bool            m_chooser;
 };

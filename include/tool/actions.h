@@ -186,6 +186,7 @@ public:
     static TOOL_ACTION gridFast1;
     static TOOL_ACTION gridFast2;
     static TOOL_ACTION gridFastCycle;
+    static TOOL_ACTION gridMenu;
     static TOOL_ACTION gridNext;
     static TOOL_ACTION gridPrev;
     static TOOL_ACTION gridSetOrigin;

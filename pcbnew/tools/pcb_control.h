@@ -98,6 +98,10 @@ public:
     int SnapMode( const TOOL_EVENT& aEvent );
     int SnapModeFeedback( const TOOL_EVENT& aEvent );
 
+    /// Show the hotkey-cycle popup when a grid hotkey changes the grid (the schematic editor
+    /// already does this; the board editor changed grids silently).
+    int GridFeedback( const TOOL_EVENT& aEvent );
+
     // Miscellaneous
     int InteractiveDelete( const TOOL_EVENT& aEvent );
     int Paste( const TOOL_EVENT& aEvent );

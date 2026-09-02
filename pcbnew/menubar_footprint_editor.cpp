@@ -124,6 +124,7 @@ void FOOTPRINT_EDIT_FRAME::doReCreateMenuBar()
     editMenu->Add( PCB_ACTIONS::extendGraphic );
     editMenu->Add( PCB_ACTIONS::trimGraphic );
     editMenu->Add( PCB_ACTIONS::enumeratePads );
+    editMenu->Add( ACTIONS::gridMenu );
     editMenu->Add( ACTIONS::gridOrigin );
 
 

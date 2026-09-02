@@ -29,9 +29,10 @@
 
 using namespace std::placeholders;
 
-GRID_MENU::GRID_MENU( EDA_DRAW_FRAME* aParent ) :
+GRID_MENU::GRID_MENU( EDA_DRAW_FRAME* aParent, bool aChooser ) :
         ACTION_MENU( true ),
-        m_parent( aParent )
+        m_parent( aParent ),
+        m_chooser( aChooser )
 {
     UpdateTitle();
     SetIcon( BITMAPS::grid_select );
@@ -65,13 +66,22 @@ void GRID_MENU::update()
     while( GetMenuItemCount() > 0 )
         Delete( FindItemByPosition( 0 ) );
 
-    Add( ACTIONS::gridOrigin );
-    AppendSeparator();
+    if( !m_chooser )
+    {
+        Add( ACTIONS::gridOrigin );
+        AppendSeparator();
+    }
 
     for( const wxString& grid : gridsList )
     {
         int idx = i++;
         Append( idx, grid, wxEmptyString, wxITEM_CHECK )->Check( idx == (int) current );
+    }
+
+    if( m_chooser )
+    {
+        AppendSeparator();
+        Add( ACTIONS::gridProperties );
     }
 }
 

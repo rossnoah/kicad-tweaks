@@ -2402,6 +2402,31 @@ int PCB_CONTROL::SnapModeFeedback( const TOOL_EVENT& aEvent )
 }
 
 
+int PCB_CONTROL::GridFeedback( const TOOL_EVENT& aEvent )
+{
+    if( !Pgm().GetCommonSettings()->m_Input.hotkey_feedback )
+        return 0;
+
+    // The same grid list COMMON_TOOLS cycles through, so the footprint editor shows its own.
+    GRID_SETTINGS& gridSettings = m_frame->GetWindowSettings( m_toolMgr->GetSettings() )->grid;
+    int            currentIdx = gridSettings.last_size_idx;
+    wxArrayString  gridsLabels;
+
+    for( const GRID& grid : gridSettings.grids )
+        gridsLabels.Add( grid.UserUnitsMessageText( m_frame ) );
+
+    if( !m_frame->GetHotkeyPopup() )
+        m_frame->CreateHotkeyPopup();
+
+    HOTKEY_CYCLE_POPUP* popup = m_frame->GetHotkeyPopup();
+
+    if( popup )
+        popup->Popup( _( "Grid" ), gridsLabels, currentIdx );
+
+    return 0;
+}
+
+
 int PCB_CONTROL::UpdateMessagePanel( const TOOL_EVENT& aEvent )
 {
     PCB_SELECTION_TOOL*         selTool = m_toolMgr->GetTool<PCB_SELECTION_TOOL>();
@@ -3186,6 +3211,7 @@ void PCB_CONTROL::setTransitions()
     Go( &PCB_CONTROL::SnapMode,             PCB_ACTIONS::magneticSnapAllLayers.MakeEvent() );
     Go( &PCB_CONTROL::SnapMode,             PCB_ACTIONS::magneticSnapToggle.MakeEvent() );
     Go( &PCB_CONTROL::SnapModeFeedback,     PCB_EVENTS::SnappingModeChangedByKeyEvent() );
+    Go( &PCB_CONTROL::GridFeedback,         EVENTS::GridChangedByKeyEvent );
 
     // Miscellaneous
     Go( &PCB_CONTROL::InteractiveDelete,       ACTIONS::deleteTool.MakeEvent() );

@@ -77,6 +77,7 @@ public:
     EDA_UNITS GetLastImperialUnits() { return m_imperialUnit; }
 
     // Grid control
+    int GridMenu( const TOOL_EVENT& aEvent );
     int GridNext( const TOOL_EVENT& aEvent );
     int GridPrev( const TOOL_EVENT& aEvent );
     int GridPreset( const TOOL_EVENT& aEvent );

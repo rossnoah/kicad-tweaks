@@ -1049,19 +1049,31 @@ TOOL_ACTION ACTIONS::gridFastCycle( TOOL_ACTION_ARGS()
         .LegacyHotkeyName( "Switch Grid To Next Fast Grid" )
         .FriendlyName( _( "Cycle Fast Grid"  ) ) );
 
+// Changing the grid is a deliberate act: the hotkeys open the grid menu at the cursor and
+// nothing changes until an entry is picked.  The silent next/previous cycling stays available
+// for anyone who wants to bind it back.
+TOOL_ACTION ACTIONS::gridMenu( TOOL_ACTION_ARGS()
+        .Name( "common.Control.gridMenu" )
+        .Scope( AS_GLOBAL )
+        .DefaultHotkey( 'N' )
+        .DefaultHotkeyAlt( MD_SHIFT + 'N' )
+        .FriendlyName( _( "Choose Grid..." ) )
+        .Tooltip( _( "Open the grid menu at the cursor" ) )
+        .Icon( BITMAPS::grid_select ) );
+
 TOOL_ACTION ACTIONS::gridNext( TOOL_ACTION_ARGS()
         .Name( "common.Control.gridNext" )
         .Scope( AS_GLOBAL )
-        .DefaultHotkey( 'N' )
         .LegacyHotkeyName( "Switch Grid To Next" )
-        .FriendlyName( _("Switch to Next Grid" ) ) );
+        .FriendlyName( _("Switch to Next Grid" ) )
+        .Tooltip( _( "Cycle to the next grid without a menu (unbound by default; see Choose Grid)" ) ) );
 
 TOOL_ACTION ACTIONS::gridPrev( TOOL_ACTION_ARGS()
         .Name( "common.Control.gridPrev" )
         .Scope( AS_GLOBAL )
-        .DefaultHotkey( MD_SHIFT + 'N' )
         .LegacyHotkeyName( "Switch Grid To Previous" )
-        .FriendlyName( _( "Switch to Previous Grid" ) ) );
+        .FriendlyName( _( "Switch to Previous Grid" ) )
+        .Tooltip( _( "Cycle to the previous grid without a menu (unbound by default; see Choose Grid)" ) ) );
 
 TOOL_ACTION ACTIONS::gridSetOrigin( TOOL_ACTION_ARGS()
         .Name( "common.Control.gridSetOrigin" )

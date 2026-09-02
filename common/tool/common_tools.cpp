@@ -38,6 +38,7 @@
 #include <tool/tool_manager.h>
 #include <tool/selection_tool.h>
 #include <tool/grid_helper.h>
+#include <tool/grid_menu.h>
 #include <view/view.h>
 #include <view/view_controls.h>
 #include "macros.h"
@@ -495,6 +496,29 @@ int COMMON_TOOLS::doZoomToPreset( int idx, bool aCenterOnCursor )
 }
 
 
+int COMMON_TOOLS::GridMenu( const TOOL_EVENT& aEvent )
+{
+    // The pick is delivered by GRID_MENU::eventHandler as a gridPreset action, exactly as the
+    // right-click Grid submenu does, so the toolbar combo, the canvas grid and the cursor all
+    // update through OnGridChanged().  Escape closes the menu with nothing changed.
+    GRID_MENU menu( m_frame, true );
+    menu.SetTool( this );
+    menu.SetShowTitle();
+
+    SetContextMenu( &menu, CMENU_NOW );
+
+    while( TOOL_EVENT* evt = Wait() )
+    {
+        if( evt->Action() == TA_CHOICE_MENU_CHOICE || evt->Action() == TA_CHOICE_MENU_CLOSED )
+            break;
+
+        evt->SetPassEvent();
+    }
+
+    return 0;
+}
+
+
 int COMMON_TOOLS::GridNext( const TOOL_EVENT& aEvent )
 {
     int& currentGrid = m_frame->GetWindowSettings( m_toolMgr->GetSettings() )->grid.last_size_idx;
@@ -807,6 +831,7 @@ void COMMON_TOOLS::setTransitions()
     Go( &COMMON_TOOLS::CenterSelection,     ACTIONS::centerSelection.MakeEvent() );
 
     // Grid control
+    Go( &COMMON_TOOLS::GridMenu,            ACTIONS::gridMenu.MakeEvent() );
     Go( &COMMON_TOOLS::GridNext,            ACTIONS::gridNext.MakeEvent() );
     Go( &COMMON_TOOLS::GridPrev,            ACTIONS::gridPrev.MakeEvent() );
     Go( &COMMON_TOOLS::GridPreset,          ACTIONS::gridPreset.MakeEvent() );
