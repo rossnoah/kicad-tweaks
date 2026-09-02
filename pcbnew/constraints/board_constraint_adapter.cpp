@@ -1677,6 +1677,7 @@ bool BOARD_CONSTRAINT_ADAPTER::addSnapRelations( const ANCHOR_PARAMS&           
 
         case SNAP_RELATION::BBOX_ALIGNMENT:
         case SNAP_RELATION::BBOX_EQUAL_GAP:
+        case SNAP_RELATION::LATTICE_ALIGNMENT:
             if( candidate.direction.x != 0.0 )
                 addCoordinateX( candidate.origin.x );
             else if( candidate.direction.y != 0.0 )
@@ -3054,6 +3055,7 @@ SNAP_RESULT BOARD_CONSTRAINT_DRAG_SESSION::ResolveCandidates(
 
                 case SNAP_RELATION::BBOX_ALIGNMENT:
                 case SNAP_RELATION::BBOX_EQUAL_GAP:
+                case SNAP_RELATION::LATTICE_ALIGNMENT:
                     if( aCandidate.direction.x != 0.0 )
                         return std::abs( point.x - aCandidate.origin.x );
 

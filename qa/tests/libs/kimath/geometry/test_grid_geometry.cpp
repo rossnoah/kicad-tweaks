@@ -19,6 +19,7 @@
 
 #include <qa_utils/wx_utils/unit_test_utils.h>
 
+#include <algorithm>
 #include <cmath>
 
 #include <geometry/grid_geometry.h>
@@ -78,7 +79,8 @@ BOOST_AUTO_TEST_CASE( CellCentreFollowsRotatedGrid )
     auto halfPitchResidual =
             []( double aCoord )
             {
-                return std::fmod( std::fabs( aCoord ) + 50.0, 100.0 );
+                const double r = std::fmod( std::fabs( aCoord ) + 50.0, 100.0 );
+                return std::min( r, 100.0 - r ); // distance to the nearest odd multiple of 50
             };
 
     BOOST_CHECK_SMALL( halfPitchResidual( local.x ), 1e-6 );

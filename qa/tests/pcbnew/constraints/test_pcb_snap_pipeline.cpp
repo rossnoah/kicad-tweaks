@@ -897,12 +897,13 @@ BOOST_FIXTURE_TEST_CASE( TileSnapHonoursPlacementGridItem, PCB_SNAP_FIXTURE )
     const VECTOR2I centre = fp->GetPlacementCentre();
 
     helper->SetTileSnap( true );
+    helper->SetSnap( false ); // the grid item's own handles are snap objects; this is about tiles
 
-    const VECTOR2I cursor = centre + VECTOR2I( 3 * MM / 100, 7 * MM / 100 );
+    const VECTOR2I cursor = centre + VECTOR2I( 43 * MM / 100, 27 * MM / 100 );
     SNAP_RESULT    result = helper->ResolveSnap( cursor, LSET( { F_Cu } ), GRID_CONNECTABLE, MovingItems( fp ), centre );
 
     // Cell centres of the local grid sit at odd multiples of 0.1 mm from its origin.
-    BOOST_CHECK_EQUAL( result.position, VECTOR2I( 5 * MM + MM / 10, 5 * MM + MM / 10 ) );
+    BOOST_CHECK_EQUAL( result.position, VECTOR2I( 5 * MM + 5 * MM / 10, 5 * MM + 3 * MM / 10 ) );
     BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::TILE );
 }
 

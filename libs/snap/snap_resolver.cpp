@@ -72,6 +72,7 @@ const char* relationName( SNAP_RELATION aRelation )
     case SNAP_RELATION::NORMAL: return "NORMAL";
     case SNAP_RELATION::BBOX_ALIGNMENT: return "BBOX_ALIGNMENT";
     case SNAP_RELATION::BBOX_EQUAL_GAP: return "BBOX_EQUAL_GAP";
+    case SNAP_RELATION::LATTICE_ALIGNMENT: return "LATTICE_ALIGNMENT";
     case SNAP_RELATION::GRID_X: return "GRID_X";
     case SNAP_RELATION::GRID_Y: return "GRID_Y";
     }
@@ -283,6 +284,7 @@ std::vector<EQUATION> equations( const std::vector<SNAP_CANDIDATE>& aCandidates 
 
         case SNAP_RELATION::BBOX_ALIGNMENT:
         case SNAP_RELATION::BBOX_EQUAL_GAP:
+        case SNAP_RELATION::LATTICE_ALIGNMENT:
             if( candidate.direction.x != 0.0 )
                 result.push_back( { 1.0, 0.0, candidate.origin.x, true } );
             else if( candidate.direction.y != 0.0 )

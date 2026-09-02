@@ -70,6 +70,7 @@
 #include <tools/pcb_actions.h>
 #include <tools/pcb_edit_table_tool.h>
 #include <tools/pcb_grid_helper.h>
+#include <gal/graphics_abstraction_layer.h>
 #include <tools/pcb_picker_tool.h>
 #include <tools/pcb_selection_conditions.h>
 #include <tools/pcb_selection_tool.h>

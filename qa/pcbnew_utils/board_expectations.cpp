@@ -22,6 +22,7 @@
 #include "pcbnew_utils/board_expectations.h"
 
 #include <optional>
+#include <span>
 #include <sstream>
 
 #include <core/profile.h>

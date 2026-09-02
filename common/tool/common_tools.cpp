@@ -503,7 +503,7 @@ int COMMON_TOOLS::GridMenu( const TOOL_EVENT& aEvent )
     // update through OnGridChanged().  Escape closes the menu with nothing changed.
     GRID_MENU menu( m_frame, true );
     menu.SetTool( this );
-    menu.SetShowTitle();
+    menu.DisplayTitle( true );
 
     SetContextMenu( &menu, CMENU_NOW );
 
