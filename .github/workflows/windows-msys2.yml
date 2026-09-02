@@ -86,23 +86,30 @@ jobs:
 
       - name: Bundle runtime DLLs
         # Copy every MinGW DLL the executables and kifaces link against, so the
-        # zip runs on a machine without MSYS2.
+        # zip runs on a machine without MSYS2.  objdump reads import tables without
+        # loading anything, unlike ldd, which took hours here.
         run: |
           set -e
           bin=install/bin
-          copy_deps() {
-            ldd "$1" | awk '/ucrt64\/bin/ {print $3}' | while read -r dll; do
-              cp -n "$dll" "$bin/" 2>/dev/null || true
-            done
-          }
+          src="${MINGW_PREFIX}/bin"
+          declare -A seen
+          queue=()
           for f in "$bin"/*.exe "$bin"/*.dll "$bin"/*.kiface; do
-            [ -f "$f" ] && copy_deps "$f"
+            [ -f "$f" ] && queue+=( "$f" )
           done
-          # Second pass: DLLs pulled in by the DLLs we just copied.
-          for f in "$bin"/*.dll; do
-            copy_deps "$f"
+          while [ ${#queue[@]} -gt 0 ]; do
+            f="${queue[0]}"; queue=( "${queue[@]:1}" )
+            for dll in $(objdump -p "$f" 2>/dev/null | awk '/DLL Name:/ {print $3}'); do
+              lower=$(echo "$dll" | tr 'A-Z' 'a-z')
+              [ -n "${seen[$lower]}" ] && continue
+              seen[$lower]=1
+              if [ -f "$src/$dll" ] && [ ! -f "$bin/$dll" ]; then
+                cp "$src/$dll" "$bin/"
+                queue+=( "$bin/$dll" )
+              fi
+            done
           done
-          ls "$bin" | wc -l
+          echo "bundled $(ls "$bin"/*.dll | wc -l) DLLs"
 
       - uses: actions/upload-artifact@v4
         with:
