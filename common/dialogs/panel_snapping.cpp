@@ -76,14 +76,39 @@ static void fillMagneticChoice( wxChoice* aChoice, const std::vector<MAGNETIC_OP
 
 PANEL_SNAPPING::PANEL_SNAPPING( wxWindow* aParent, FRAME_T aFrameType, int* aGridSnap,
                                 SNAP_INFERENCE_SETTINGS* aInference, MAGNETIC_SETTINGS* aMagnetics,
-                                std::function<VALUES()> aDefaults ) :
+                                std::function<VALUES()> aDefaults, bool* aFootprintTileSnap ) :
         PANEL_SNAPPING_BASE( aParent ),
         m_routing( aFrameType == FRAME_PCB_EDITOR ),
         m_gridSnap( aGridSnap ),
         m_inference( aInference ),
         m_magnetics( aMagnetics ),
+        m_footprintTileSnap( aFootprintTileSnap ),
         m_defaults( std::move( aDefaults ) )
 {
+    // The footprint tile-snap checkbox joins the grid-snapping group, just above the object
+    // snapping heading, for the editors that place footprints.
+    if( m_footprintTileSnap )
+    {
+        m_snapFootprintTiles = new wxCheckBox( this, wxID_ANY, _( "Snap footprint centres to grid tiles" ) );
+        m_snapFootprintTiles->SetToolTip( _( "Place footprints by their centre on the middle of grid cells "
+                                             "instead of by their origin on grid points" ) );
+
+        if( wxSizer* column = m_objectSnappingLabel->GetContainingSizer() )
+        {
+            size_t index = 0;
+
+            for( wxSizerItem* item : column->GetChildren() )
+            {
+                if( item->GetWindow() == m_objectSnappingLabel )
+                    break;
+
+                ++index;
+            }
+
+            column->Insert( index, m_snapFootprintTiles, 0, wxLEFT | wxBOTTOM, 10 );
+        }
+    }
+
     m_padOptions = MagneticSnapOptions( m_routing );
     m_trackOptions = MagneticSnapOptions( true );
     m_graphicsOptions = MagneticSnapOptions( false );
@@ -138,6 +163,9 @@ void PANEL_SNAPPING::load( const VALUES& aValues )
         m_snapTangentNormal->SetValue( aValues.inference.tangentNormal );
         m_snapAlignmentDistribution->SetValue( aValues.inference.alignmentDistribution );
     }
+
+    if( m_snapFootprintTiles )
+        m_snapFootprintTiles->SetValue( aValues.footprintTileSnap );
 }
 
 
@@ -151,6 +179,9 @@ bool PANEL_SNAPPING::TransferDataToWindow()
 
     if( m_inference )
         values.inference = *m_inference;
+
+    if( m_footprintTileSnap )
+        values.footprintTileSnap = *m_footprintTileSnap;
 
     load( values );
 
@@ -181,6 +212,9 @@ bool PANEL_SNAPPING::TransferDataFromWindow()
         m_inference->tangentNormal = m_snapTangentNormal->GetValue();
         m_inference->alignmentDistribution = m_snapAlignmentDistribution->GetValue();
     }
+
+    if( m_footprintTileSnap && m_snapFootprintTiles )
+        *m_footprintTileSnap = m_snapFootprintTiles->GetValue();
 
     return true;
 }

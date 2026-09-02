@@ -2402,6 +2402,50 @@ int PCB_CONTROL::SnapModeFeedback( const TOOL_EVENT& aEvent )
 }
 
 
+int PCB_CONTROL::FootprintTileSnap( const TOOL_EVENT& aEvent )
+{
+    // The footprint editor arranges a footprint's own pads and never tile-snaps.
+    if( m_isFootprintEditor )
+        return 0;
+
+    PCBNEW_SETTINGS* cfg = m_frame->GetPcbNewSettings();
+
+    if( !cfg )
+        return 0;
+
+    cfg->m_FootprintTileSnap = !cfg->m_FootprintTileSnap;
+    m_toolMgr->PostEvent( PCB_EVENTS::FootprintTileSnapChangedByKeyEvent() );
+
+    return 0;
+}
+
+
+int PCB_CONTROL::FootprintTileSnapFeedback( const TOOL_EVENT& aEvent )
+{
+    if( !Pgm().GetCommonSettings()->m_Input.hotkey_feedback || m_isFootprintEditor )
+        return 0;
+
+    PCBNEW_SETTINGS* cfg = m_frame->GetPcbNewSettings();
+
+    if( !cfg )
+        return 0;
+
+    wxArrayString labels;
+    labels.Add( _( "Grid points" ) );
+    labels.Add( _( "Tile centres" ) );
+
+    if( !m_frame->GetHotkeyPopup() )
+        m_frame->CreateHotkeyPopup();
+
+    HOTKEY_CYCLE_POPUP* popup = m_frame->GetHotkeyPopup();
+
+    if( popup )
+        popup->Popup( _( "Footprint Snap" ), labels, cfg->m_FootprintTileSnap ? 1 : 0 );
+
+    return 0;
+}
+
+
 int PCB_CONTROL::GridFeedback( const TOOL_EVENT& aEvent )
 {
     if( !Pgm().GetCommonSettings()->m_Input.hotkey_feedback )
@@ -3212,6 +3256,8 @@ void PCB_CONTROL::setTransitions()
     Go( &PCB_CONTROL::SnapMode,             PCB_ACTIONS::magneticSnapToggle.MakeEvent() );
     Go( &PCB_CONTROL::SnapModeFeedback,     PCB_EVENTS::SnappingModeChangedByKeyEvent() );
     Go( &PCB_CONTROL::GridFeedback,         EVENTS::GridChangedByKeyEvent );
+    Go( &PCB_CONTROL::FootprintTileSnap,    PCB_ACTIONS::footprintTileSnapToggle.MakeEvent() );
+    Go( &PCB_CONTROL::FootprintTileSnapFeedback, PCB_EVENTS::FootprintTileSnapChangedByKeyEvent() );
 
     // Miscellaneous
     Go( &PCB_CONTROL::InteractiveDelete,       ACTIONS::deleteTool.MakeEvent() );

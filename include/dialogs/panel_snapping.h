@@ -44,6 +44,7 @@ public:
         int                     gridSnap = 0;
         MAGNETIC_SETTINGS       magnetics;
         SNAP_INFERENCE_SETTINGS inference;
+        bool                    footprintTileSnap = true;
     };
 
     /**
@@ -52,10 +53,12 @@ public:
      * @param aInference points at the live inference settings, or null if the editor has none.
      * @param aMagnetics points at the live object snapping settings, or null if the editor has none.
      * @param aDefaults yields the values the reset button restores.
+     * @param aFootprintTileSnap points at the live footprint tile-snap flag, or null if the
+     *                           editor does not place footprints (the checkbox is then hidden).
      */
     PANEL_SNAPPING( wxWindow* aParent, FRAME_T aFrameType, int* aGridSnap,
                     SNAP_INFERENCE_SETTINGS* aInference, MAGNETIC_SETTINGS* aMagnetics,
-                    std::function<VALUES()> aDefaults );
+                    std::function<VALUES()> aDefaults, bool* aFootprintTileSnap = nullptr );
 
     bool TransferDataToWindow() override;
     bool TransferDataFromWindow() override;
@@ -70,7 +73,12 @@ private:
     int*                     m_gridSnap;
     SNAP_INFERENCE_SETTINGS* m_inference;
     MAGNETIC_SETTINGS*       m_magnetics;
+    bool*                    m_footprintTileSnap;
     std::function<VALUES()>  m_defaults;
+
+    /// Created here rather than in the generated base so editors without footprints never
+    /// see it.
+    wxCheckBox*              m_snapFootprintTiles = nullptr;
 
     std::vector<MAGNETIC_OPTIONS> m_padOptions;
     std::vector<MAGNETIC_OPTIONS> m_trackOptions;
@@ -108,10 +116,11 @@ MAGNETIC_OPTIONS MagneticSnapValue( const std::vector<MAGNETIC_OPTIONS>& aOption
 template <typename SETTINGS_T>
 PANEL_SNAPPING* CreateSnappingPanel( wxWindow* aParent, SETTINGS_T* aCfg, FRAME_T aFrameType,
                                      SNAP_INFERENCE_SETTINGS SETTINGS_T::* aInference = nullptr,
-                                     MAGNETIC_SETTINGS SETTINGS_T::* aMagnetics = nullptr )
+                                     MAGNETIC_SETTINGS SETTINGS_T::* aMagnetics = nullptr,
+                                     bool SETTINGS_T::* aFootprintTileSnap = nullptr )
 {
     auto valuesOf =
-            [aInference, aMagnetics]( const SETTINGS_T& aSettings )
+            [aInference, aMagnetics, aFootprintTileSnap]( const SETTINGS_T& aSettings )
             {
                 PANEL_SNAPPING::VALUES values;
                 values.gridSnap = aSettings.m_Window.grid.snap;
@@ -121,6 +130,9 @@ PANEL_SNAPPING* CreateSnappingPanel( wxWindow* aParent, SETTINGS_T* aCfg, FRAME_
 
                 if( aMagnetics )
                     values.magnetics = aSettings.*aMagnetics;
+
+                if( aFootprintTileSnap )
+                    values.footprintTileSnap = aSettings.*aFootprintTileSnap;
 
                 return values;
             };
@@ -133,7 +145,8 @@ PANEL_SNAPPING* CreateSnappingPanel( wxWindow* aParent, SETTINGS_T* aCfg, FRAME_
                                    SETTINGS_T defaults;
                                    defaults.Load();     // Loading without a file gives the defaults
                                    return valuesOf( defaults );
-                               } );
+                               },
+                               aFootprintTileSnap ? &( aCfg->*aFootprintTileSnap ) : nullptr );
 }
 
 #endif

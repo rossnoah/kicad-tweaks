@@ -2564,6 +2564,14 @@ int EDIT_TOOL::Rotate( const TOOL_EVENT& aEvent )
     {
         selection.SetReferencePoint( static_cast<PCB_SHAPE*>( selection.Front() )->GetCenter() );
     }
+    else if( selection.Size() == 1 && !m_dragging && !m_isFootprintEditor
+             && selection.Front()->Type() == PCB_FOOTPRINT_T
+             && frame()->GetPcbNewSettings()->m_FootprintTileSnap )
+    {
+        // Tile snap places a footprint by its centre, so it turns about that centre too and
+        // stays in its tile.
+        selection.SetReferencePoint( static_cast<FOOTPRINT*>( selection.Front() )->GetPlacementCentre() );
+    }
     else
     {
         updateModificationPoint( selection );

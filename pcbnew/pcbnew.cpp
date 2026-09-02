@@ -437,7 +437,8 @@ static struct IFACE : public KIFACE_BASE, public UNITS_PROVIDER
 
         case PANEL_PCB_SNAPPING:
             return CreateSnappingPanel( aParent, GetAppSettings<PCBNEW_SETTINGS>( "pcbnew" ), FRAME_PCB_EDITOR,
-                                        &PCBNEW_SETTINGS::m_SnapInference, &PCBNEW_SETTINGS::m_MagneticItems );
+                                        &PCBNEW_SETTINGS::m_SnapInference, &PCBNEW_SETTINGS::m_MagneticItems,
+                                        &PCBNEW_SETTINGS::m_FootprintTileSnap );
 
         case PANEL_PCB_ORIGINS_AXES:
             return new PANEL_PCBNEW_DISPLAY_ORIGIN( aParent, GetAppSettings<PCBNEW_SETTINGS>( "pcbnew" ),

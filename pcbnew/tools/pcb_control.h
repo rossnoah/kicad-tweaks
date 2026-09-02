@@ -102,6 +102,9 @@ public:
     /// already does this; the board editor changed grids silently).
     int GridFeedback( const TOOL_EVENT& aEvent );
 
+    int FootprintTileSnap( const TOOL_EVENT& aEvent );
+    int FootprintTileSnapFeedback( const TOOL_EVENT& aEvent );
+
     // Miscellaneous
     int InteractiveDelete( const TOOL_EVENT& aEvent );
     int Paste( const TOOL_EVENT& aEvent );

@@ -212,6 +212,7 @@ void PCB_EDIT_FRAME::doReCreateMenuBar()
     editMenu->Add( PCB_ACTIONS::changeFootprints );
     editMenu->Add( PCB_ACTIONS::swapLayers );
     editMenu->Add( ACTIONS::gridMenu );
+    editMenu->Add( PCB_ACTIONS::footprintTileSnapToggle, ACTION_MENU::CHECK );
     editMenu->Add( ACTIONS::gridOrigin );
 
     editMenu->AppendSeparator();

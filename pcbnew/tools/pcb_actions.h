@@ -261,6 +261,9 @@ public:
     static TOOL_ACTION magneticSnapAllLayers;
     static TOOL_ACTION magneticSnapToggle;
 
+    /// Snap a moving footprint's centre to grid tiles (on) or its origin to grid points (off)
+    static TOOL_ACTION footprintTileSnapToggle;
+
     // Push and Shove Router Tool
 
     /// Activation of the Push and Shove router
@@ -714,6 +717,7 @@ public:
 
     /// Hotkey feedback
     static const TOOL_EVENT& SnappingModeChangedByKeyEvent();
+    static const TOOL_EVENT& FootprintTileSnapChangedByKeyEvent();
     static const TOOL_EVENT& LayerPairPresetChangedByKeyEvent();
 };
 

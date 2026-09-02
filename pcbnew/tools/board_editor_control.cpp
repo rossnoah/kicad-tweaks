@@ -69,6 +69,7 @@
 #include <tools/drawing_tool.h>
 #include <tools/pcb_actions.h>
 #include <tools/pcb_edit_table_tool.h>
+#include <tools/pcb_grid_helper.h>
 #include <tools/pcb_picker_tool.h>
 #include <tools/pcb_selection_conditions.h>
 #include <tools/pcb_selection_tool.h>
@@ -1372,6 +1373,10 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
     TOOL_EVENT         originalEvent = aEvent;          // This can change out from under us when the event loop runs
     SCOPED_TOOL_PUSHER raii( m_frame, originalEvent );
 
+    // The same snapping the move tool uses, so a new part's first drop lands where a moved
+    // part would: on a tile centre when tile snap is on, with object snapping and pitch guides.
+    PCB_GRID_HELPER grid( m_toolMgr, m_frame->GetMagneticItemsSettings() );
+
     // Frame angle already applied to fp; recaptured whenever fp is (re)acquired, so
     // stale state can never leak into the next placement.
     EDA_ANGLE prevFrameAngle = ANGLE_0;
@@ -1402,6 +1407,8 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
 
                 fp = nullptr;
                 m_placingFootprint = false;
+                grid.SetTileLead( nullptr );
+                grid.ClearSnapFeedback();
             };
 
     Activate();
@@ -1414,19 +1421,55 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
     bool     ignorePrimePosition = false;
     bool     reselect = false;
 
+    // The point of the footprint that is being placed: its placement centre under tile snap,
+    // its origin otherwise.
+    auto placementReference =
+            [&]() -> VECTOR2I
+            {
+                return grid.GetTileSnap() ? fp->GetPlacementCentre() : fp->GetPosition();
+            };
+
+    // Where the reference should go for a mouse at aMouse.
+    auto resolvePlacement =
+            [&]( const VECTOR2I& aMouse, const TOOL_EVENT* aEvt ) -> VECTOR2I
+            {
+                grid.SetSnap( !( aEvt && aEvt->Modifier( MD_SHIFT ) ) );
+                grid.SetUseGrid( getView()->GetGAL()->GetGridSnapping()
+                                 && !( aEvt && aEvt->DisableGridSnapping() ) );
+
+                const bool tile = grid.TileSnapPreferred();
+                grid.SetTileSnap( tile );
+                grid.SetTileLead( tile ? fp : nullptr );
+
+                std::vector<BOARD_ITEM*> moving{ fp };
+
+                for( PAD* pad : fp->Pads() )
+                    moving.push_back( pad );
+
+                return grid.ResolveSnap( aMouse, fp->GetLayerSet(), GRID_CONNECTABLE, moving, placementReference() )
+                        .position;
+            };
+
+    auto moveReferenceTo =
+            [&]( const VECTOR2I& aTarget )
+            {
+                fp->Move( aTarget - placementReference() );
+            };
+
     auto applyPlacementFrameOrientation =
             [&]()
             {
                 if( !fp )
                     return;
 
-                EDA_ANGLE newAngle = GridFrameAngleAt( *board, fp->GetPosition(), PCB_GRIDITEM_ROLE::PLACEMENT );
-                EDA_ANGLE delta = GridFrameRotationDelta( prevFrameAngle, newAngle, m_frame->GetRotationAngle() );
+                const VECTOR2I pivot = placementReference();
+                EDA_ANGLE      newAngle = GridFrameAngleAt( *board, pivot, PCB_GRIDITEM_ROLE::PLACEMENT );
+                EDA_ANGLE      delta = GridFrameRotationDelta( prevFrameAngle, newAngle, m_frame->GetRotationAngle() );
 
                 prevFrameAngle = newAngle;
 
                 if( !delta.IsZero() )
-                    fp->Rotate( fp->GetPosition(), delta );
+                    fp->Rotate( pivot, delta );
             };
 
     // Prime the pump
@@ -1438,6 +1481,7 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
         // rotation of the grid it sits in; count that as applied, like a move pick-up.
         prevFrameAngle = GridFrameAngleAt( *board, fp->GetPosition(), PCB_GRIDITEM_ROLE::PLACEMENT );
         fp->SetPosition( cursorPos );
+        moveReferenceTo( resolvePlacement( cursorPos, nullptr ) );
         applyPlacementFrameOrientation();
         m_toolMgr->RunAction<EDA_ITEM*>( ACTIONS::selectItem, fp );
         m_toolMgr->PostAction( ACTIONS::refreshPreview );
@@ -1530,6 +1574,7 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
 
                 fp->SetOrientation( ANGLE_0 );
                 fp->SetPosition( cursorPos );
+                moveReferenceTo( resolvePlacement( cursorPos, evt ) );
                 prevFrameAngle = ANGLE_0;
                 applyPlacementFrameOrientation();
 
@@ -1544,6 +1589,8 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
                 commit.Push( _( "Place Footprint" ) );
                 fp = nullptr;  // to indicate that there is no footprint that we currently modify
                 m_placingFootprint = false;
+                grid.SetTileLead( nullptr );
+                grid.ClearSnapFeedback();
             }
         }
         else if( evt->IsClick( BUT_RIGHT ) )
@@ -1552,9 +1599,12 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
         }
         else if( fp && ( evt->IsMotion() || evt->IsAction( &ACTIONS::refreshPreview ) ) )
         {
-            fp->SetPosition( cursorPos );
+            const VECTOR2I target = resolvePlacement( controls->GetMousePosition(), evt );
+
+            moveReferenceTo( target );
             applyPlacementFrameOrientation();
-            selection().SetReferencePoint( cursorPos );
+            controls->ForceCursorPosition( true, target );
+            selection().SetReferencePoint( target );
             getView()->Update( &selection() );
             getView()->Update( fp );
         }
@@ -1580,6 +1630,9 @@ int BOARD_EDITOR_CONTROL::PlaceFootprint( const TOOL_EVENT& aEvent )
 
     controls->SetAutoPan( false );
     controls->CaptureCursor( false );
+    controls->ForceCursorPosition( false );
+    grid.SetTileLead( nullptr );
+    grid.ClearSnapFeedback();
     m_frame->GetCanvas()->SetCurrentCursor( KICURSOR::ARROW );
 
     return 0;

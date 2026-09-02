@@ -711,6 +711,14 @@ TOOL_ACTION PCB_ACTIONS::magneticSnapToggle( TOOL_ACTION_ARGS()
         .FriendlyName( _( "Toggle Snapping Between Active and All Layers" ) )
         .Tooltip( _( "Toggles between snapping on all visible layers and only the active area" ) ) );
 
+TOOL_ACTION PCB_ACTIONS::footprintTileSnapToggle( TOOL_ACTION_ARGS()
+        .Name( "pcbnew.Control.footprintTileSnapToggle" )
+        .Scope( AS_GLOBAL )
+        .FriendlyName( _( "Snap Footprint Centres to Grid Tiles" ) )
+        .Tooltip( _( "Place footprints by their centre on the middle of grid cells instead of by their origin "
+                     "on grid points" ) )
+        .Icon( BITMAPS::grid_select ) );
+
 TOOL_ACTION PCB_ACTIONS::closeOutline( TOOL_ACTION_ARGS()
         .Name( "pcbnew.InteractiveDrawing.closeOutline" )
         .Scope( AS_CONTEXT )
@@ -3276,6 +3284,15 @@ const TOOL_EVENT& PCB_EVENTS::SnappingModeChangedByKeyEvent()
 {
     static TOOL_EVENT event = TOOL_EVENT( TC_MESSAGE, TA_ACTION,
                                           "common.Interactive.snappingModeChangedByKey" );
+
+    return event;
+}
+
+
+const TOOL_EVENT& PCB_EVENTS::FootprintTileSnapChangedByKeyEvent()
+{
+    static TOOL_EVENT event = TOOL_EVENT( TC_MESSAGE, TA_ACTION,
+                                          "pcbnew.Interactive.footprintTileSnapChangedByKey" );
 
     return event;
 }

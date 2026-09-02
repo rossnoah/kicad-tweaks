@@ -1126,6 +1126,15 @@ void PCB_EDIT_FRAME::setupUIConditions()
 
     mgr->SetConditions( ACTIONS::toggleGrid,          CHECK( cond.GridVisible() ) );
     mgr->SetConditions( ACTIONS::toggleGridOverrides, CHECK( cond.GridOverrides() ) );
+
+    auto footprintTileSnapCond =
+            [this]( const SELECTION& )
+            {
+                PCBNEW_SETTINGS* cfg = GetPcbNewSettings();
+                return cfg && cfg->m_FootprintTileSnap;
+            };
+
+    mgr->SetConditions( PCB_ACTIONS::footprintTileSnapToggle, CHECK( footprintTileSnapCond ) );
     mgr->SetConditions( ACTIONS::togglePolarCoords,   CHECK( cond.PolarCoordinates() ) );
 
     mgr->SetConditions( ACTIONS::cut,          ENABLE( cond.HasItems() ) );

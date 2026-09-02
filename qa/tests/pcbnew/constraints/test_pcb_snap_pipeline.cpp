@@ -31,6 +31,7 @@
 #include <gal/graphics_abstraction_layer.h>
 #include <pad.h>
 #include <pcb_painter.h>
+#include <pcb_griditem.h>
 #include <pcb_shape.h>
 #include <pcb_track.h>
 #include <pcb_view.h>
@@ -874,6 +875,34 @@ BOOST_FIXTURE_TEST_CASE( ShiftDisablesPitchGuideNotTile, PCB_SNAP_FIXTURE )
                                } ) );
     BOOST_CHECK( result.Accepted( { SNAP_ID_KIND::GRID_X } ) );
     BOOST_CHECK( result.Accepted( { SNAP_ID_KIND::GRID_Y } ) );
+    BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::TILE );
+}
+
+
+BOOST_FIXTURE_TEST_CASE( TileSnapHonoursPlacementGridItem, PCB_SNAP_FIXTURE )
+{
+    // A local 0.2 mm placement grid centred on the footprint, finer than the 1 mm display grid.
+    PCB_GRIDITEM* local = new PCB_GRIDITEM( &board );
+    local->SetPosition( { 5 * MM, 5 * MM } );
+    local->SetSpacing( { MM / 5, MM / 5 } );
+    local->SetExtent( { 3 * MM, 3 * MM } );
+    local->Affects().cursor = false;
+    local->Affects().routing = false;
+    local->Affects().placement = true;
+    board.Add( local );
+    view.Add( local );
+
+    FOOTPRINT* fp = AddFootprint( { 5 * MM, 5 * MM }, { { -MM, 0 }, { MM, 0 } },
+                                  BOX2I( { -3 * MM / 2, -MM }, { 3 * MM, 2 * MM } ) );
+    const VECTOR2I centre = fp->GetPlacementCentre();
+
+    helper->SetTileSnap( true );
+
+    const VECTOR2I cursor = centre + VECTOR2I( 3 * MM / 100, 7 * MM / 100 );
+    SNAP_RESULT    result = helper->ResolveSnap( cursor, LSET( { F_Cu } ), GRID_CONNECTABLE, MovingItems( fp ), centre );
+
+    // Cell centres of the local grid sit at odd multiples of 0.1 mm from its origin.
+    BOOST_CHECK_EQUAL( result.position, VECTOR2I( 5 * MM + MM / 10, 5 * MM + MM / 10 ) );
     BOOST_CHECK( helper->GetLastReadout().kind == PCB_GRID_HELPER::SNAP_READOUT_STATE::KIND::TILE );
 }
 
