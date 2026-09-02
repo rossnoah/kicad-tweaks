@@ -45,6 +45,13 @@
 #include <properties/property.h>
 #include <properties/property_mgr.h>
 
+// <windows.h> defines GetObject as a macro (GetObjectA/GetObjectW), which mangles
+// PCBEXPR_VAR_REF::GetObject on MinGW builds.
+#ifdef GetObject
+#undef GetObject
+#endif
+
+
 
 bool fromToFunc( LIBEVAL::CONTEXT* aCtx, void* self )
 {
