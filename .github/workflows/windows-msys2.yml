@@ -37,6 +37,7 @@ jobs:
           install: >-
             git
             mingw-w64-ucrt-x86_64-cc
+            mingw-w64-ucrt-x86_64-ccache
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-pkgconf
@@ -65,9 +66,22 @@ jobs:
             mingw-w64-ucrt-x86_64-gettext
             mingw-w64-ucrt-x86_64-unixodbc
 
+      - name: Cache compiler output
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-windows-ucrt64-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-windows-ucrt64-${{ github.ref_name }}-
+            ccache-windows-ucrt64-
+
       - name: Configure
         run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          ccache --max-size=2G --zero-stats
           cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_INSTALL_PREFIX="$PWD/install" \
             -DKICAD_SCRIPTING_WXPYTHON=OFF \
@@ -79,7 +93,10 @@ jobs:
             -DOCC_INCLUDE_DIR="${MINGW_PREFIX}/include/opencascade"
 
       - name: Build
-        run: cmake --build build --parallel 4
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          cmake --build build --parallel 4
+          ccache --show-stats
 
       - name: Install
         run: cmake --install build
